@@ -4,9 +4,11 @@
 
 namespace {
     // drawChar(x, y, c, color, bg, size) always uses the built-in 5x7 GLCD
-    // glyph regardless of which fonts are loaded, so cell size is fixed.
-    constexpr int CHAR_W = 6;
-    constexpr int CHAR_H = 8;
+    // glyph regardless of which fonts are loaded, and its box is 6x8. Space
+    // columns/rows on a wider pitch than that box so a gap shows between
+    // neighboring characters instead of them touching edge to edge.
+    constexpr int CELL_W = 10;
+    constexpr int CELL_H = 13;
 
     constexpr uint8_t TRAIL_LEN = 5;     // dimming steps behind the head
     constexpr uint16_t STEP_MIN_MS = 45; // fastest column fall speed
@@ -38,13 +40,13 @@ namespace {
 
     void drawCell(TFT_eSPI &tft, int col, int row, char ch, uint16_t color) {
         if (row < 0 || row >= rowCount) return;
-        tft.drawChar(col * CHAR_W, row * CHAR_H, ch, color, TFT_BLACK, 1);
+        tft.drawChar(col * CELL_W, row * CELL_H, ch, color, TFT_BLACK, 1);
     }
 }
 
 void MatrixRain::begin(TFT_eSPI &tft) {
-    colCount = tft.width() / CHAR_W;
-    rowCount = tft.height() / CHAR_H;
+    colCount = tft.width() / CELL_W;
+    rowCount = tft.height() / CELL_H;
 
     delete[] columns;
     columns = new Column[colCount];
