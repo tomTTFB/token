@@ -3,6 +3,9 @@
 #include <Adafruit_NeoPixel.h>
 
 #include "board_pins.h"
+#include "power.h"
+#include "ui/account_list.h"
+#include "ui/boot_screen.h"
 
 TFT_eSPI tft = TFT_eSPI();
 Adafruit_NeoPixel pixels(WS2812_NUM_LEDS, WS2812_DATA_PIN, NEO_GRB + NEO_KHZ800);
@@ -23,33 +26,24 @@ void setup() {
     digitalWrite(BOARD_LORA_CS, HIGH);
 
     pinMode(ENCODER_KEY, INPUT_PULLUP);
+    pinMode(BOARD_USER_KEY, INPUT_PULLUP);
 
     tft.begin();
     tft.setRotation(3); // landscape, 320x170
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.drawString("Hello, World!", tft.width() / 2, tft.height() / 2, 4);
 
     pixels.begin();
     pixels.setBrightness(40);
+    pixels.clear();
+    pixels.show();
 
-    Serial.println("Hello, World! T-Embed CC1101 is alive.");
+    BootScreen::play(tft);
+    AccountList::draw(tft);
+
+    Serial.println("Token is alive.");
 }
 
 void loop() {
-    // Heartbeat rainbow on the onboard WS2812 strip so it's obvious the
-    // board is alive even without watching the serial monitor.
-    static uint16_t hue = 0;
-    for (int i = 0; i < WS2812_NUM_LEDS; i++) {
-        pixels.setPixelColor(i, pixels.ColorHSV((hue + i * 8192) % 65536));
-    }
-    pixels.show();
-    hue += 512;
-
-    if (digitalRead(ENCODER_KEY) == LOW) {
-        Serial.println("Encoder button pressed");
-    }
-
+    bool sidePressed = digitalRead(BOARD_USER_KEY) == LOW;
+    Power::pollShutdownButton(sidePressed, tft, pixels);
     delay(20);
 }
