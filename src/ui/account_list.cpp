@@ -17,6 +17,7 @@ namespace {
     };
     constexpr int ACCOUNT_COUNT = 4;
     constexpr int SELECTED = 0;
+    constexpr int FOOTER_BAND_H = 14;
 }
 
 void AccountList::draw(TFT_eSPI &tft) {
@@ -53,7 +54,14 @@ void AccountList::draw(TFT_eSPI &tft) {
         tft.drawString(ACCOUNTS[i].code, tft.width() - 16, y + 8, 2);
     }
 
+    drawFooter(tft, "hold side button 5s to power off", TFT_DARKGREY);
+}
+
+void AccountList::drawFooter(TFT_eSPI &tft, const String &text, uint16_t color) {
+    int y0 = tft.height() - FOOTER_BAND_H;
+    tft.fillRect(0, y0, tft.width(), FOOTER_BAND_H, TFT_BLACK);
+
     tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString("hold side button 5s to power off", tft.width() / 2, tft.height() - 8, 1);
+    tft.setTextColor(color, TFT_BLACK);
+    tft.drawString(text, tft.width() / 2, tft.height() - 8, 1);
 }
