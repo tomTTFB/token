@@ -50,8 +50,8 @@ void AccountList::draw(TFT_eSPI &tft) {
         tft.drawString(ACCOUNTS[i].issuer, 16, y + 20, 1);
 
         tft.setTextDatum(TR_DATUM);
-        tft.setTextColor(TOKEN_BLUE, rowBg);
-        tft.drawString(ACCOUNTS[i].code, tft.width() - 16, y + 8, 2);
+        tft.setTextColor(TOKEN_BLUE_LIGHT, rowBg);
+        tft.drawString(ACCOUNTS[i].code, tft.width() - 16, y + 3, 4);
     }
 
     drawFooter(tft, "hold side button 5s to power off", TFT_DARKGREY);

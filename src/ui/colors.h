@@ -14,3 +14,7 @@ constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
 
 constexpr uint16_t TOKEN_BLUE = rgb565(TOKEN_BLUE_R, TOKEN_BLUE_G, TOKEN_BLUE_B);
 constexpr uint16_t TOKEN_BLUE_DIM = rgb565(TOKEN_BLUE_R / 6, TOKEN_BLUE_G / 6, TOKEN_BLUE_B / 6);
+
+// TOKEN_BLUE blended ~35% toward white -- for text that should read as the
+// same family of blue but stand apart from solid TOKEN_BLUE accents.
+constexpr uint16_t TOKEN_BLUE_LIGHT = rgb565(128, 174, 249);
