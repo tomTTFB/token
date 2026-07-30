@@ -20,16 +20,28 @@ namespace {
         const int cx = tft.width() / 2;
         int y = tft.height() / 2 - 52;
 
-        tft.setTextDatum(TC_DATUM);
         tft.setTextColor(TOKEN_BLUE, TFT_BLACK);
-
         tft.setTextFont(1);
         tft.setTextSize(2);
+
+        // Measure the widest line and left-align every line to that single
+        // block. Centering each line on its own (TC_DATUM per line) shifts
+        // a different amount per line since they're different lengths,
+        // which throws the vertical strokes out of alignment between rows
+        // and breaks the key silhouette.
+        int blockWidth = 0;
         for (int i = 0; i < KEY_ART_LINES; i++) {
-            tft.drawString(KEY_ART[i], cx, y);
+            blockWidth = max(blockWidth, (int)tft.textWidth(KEY_ART[i]));
+        }
+        const int blockX = cx - blockWidth / 2;
+
+        tft.setTextDatum(TL_DATUM);
+        for (int i = 0; i < KEY_ART_LINES; i++) {
+            tft.drawString(KEY_ART[i], blockX, y);
             y += 16;
         }
 
+        tft.setTextDatum(TC_DATUM);
         tft.setTextSize(1);
         tft.drawString("TOKEN", cx, y + 10, 4);
     }
