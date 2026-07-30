@@ -6,13 +6,14 @@ namespace {
     struct Account {
         const char *name;
         const char *issuer;
+        const char *code;
     };
 
     const Account ACCOUNTS[] = {
-        {"GitHub", "you@example.com"},
-        {"Google", "you@gmail.com"},
-        {"AWS", "root"},
-        {"Proton Mail", "you@proton.me"},
+        {"GitHub", "you@example.com", "000000"},
+        {"Google", "you@gmail.com", "000000"},
+        {"AWS", "root", "000000"},
+        {"Proton Mail", "you@proton.me", "000000"},
     };
     constexpr int ACCOUNT_COUNT = 4;
     constexpr int SELECTED = 0;
@@ -29,21 +30,27 @@ void AccountList::draw(TFT_eSPI &tft) {
     const int rowH = 34;
     const int top = 32;
 
-    tft.setTextDatum(TL_DATUM);
     for (int i = 0; i < ACCOUNT_COUNT; i++) {
         int y = top + i * rowH;
         if (y + rowH > tft.height() - 12) break;
+
+        uint16_t rowBg = i == SELECTED ? TOKEN_BLUE_DIM : TFT_BLACK;
 
         if (i == SELECTED) {
             tft.fillRoundRect(4, y, tft.width() - 8, rowH - 4, 6, TOKEN_BLUE_DIM);
             tft.drawRoundRect(4, y, tft.width() - 8, rowH - 4, 6, TOKEN_BLUE);
         }
 
-        tft.setTextColor(i == SELECTED ? TOKEN_BLUE : TFT_WHITE, i == SELECTED ? TOKEN_BLUE_DIM : TFT_BLACK);
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(i == SELECTED ? TOKEN_BLUE : TFT_WHITE, rowBg);
         tft.drawString(ACCOUNTS[i].name, 16, y + 5, 2);
 
-        tft.setTextColor(TFT_DARKGREY, i == SELECTED ? TOKEN_BLUE_DIM : TFT_BLACK);
+        tft.setTextColor(TFT_DARKGREY, rowBg);
         tft.drawString(ACCOUNTS[i].issuer, 16, y + 20, 1);
+
+        tft.setTextDatum(TR_DATUM);
+        tft.setTextColor(TOKEN_BLUE, rowBg);
+        tft.drawString(ACCOUNTS[i].code, tft.width() - 16, y + 8, 2);
     }
 
     tft.setTextDatum(MC_DATUM);
