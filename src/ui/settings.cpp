@@ -46,24 +46,27 @@ namespace {
         tft.drawString(value, tft.width() - 16, y, 1);
     }
 
-    void drawMenu(TFT_eSPI &tft) {
-        drawHeader(tft, "Settings");
+    void drawMenuRow(TFT_eSPI &tft, int i) {
+        int y = MENU_TOP + i * MENU_ROW_H;
+        bool sel = i == menuSelected;
+        uint16_t rowBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
 
-        for (int i = 0; i < MENU_COUNT; i++) {
-            int y = MENU_TOP + i * MENU_ROW_H;
-            bool sel = i == menuSelected;
-            uint16_t rowBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
-
-            if (sel) {
-                tft.fillRoundRect(4, y, tft.width() - 8, MENU_ROW_H - 4, 6, TOKEN_BLUE_DIM);
-                tft.drawRoundRect(4, y, tft.width() - 8, MENU_ROW_H - 4, 6, TOKEN_BLUE);
-            }
-
-            tft.setTextDatum(TL_DATUM);
-            tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, rowBg);
-            tft.drawString(MENU_ITEMS[i], 16, y + 5, 2);
+        // Clear the row's own rectangle first so an unselected row erases
+        // its own leftover highlight when only this row is redrawn.
+        tft.fillRect(4, y, tft.width() - 8, MENU_ROW_H - 4, TFT_BLACK);
+        if (sel) {
+            tft.fillRoundRect(4, y, tft.width() - 8, MENU_ROW_H - 4, 6, TOKEN_BLUE_DIM);
+            tft.drawRoundRect(4, y, tft.width() - 8, MENU_ROW_H - 4, 6, TOKEN_BLUE);
         }
 
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, rowBg);
+        tft.drawString(MENU_ITEMS[i], 16, y + 5, 2);
+    }
+
+    void drawMenu(TFT_eSPI &tft) {
+        drawHeader(tft, "Settings");
+        for (int i = 0; i < MENU_COUNT; i++) drawMenuRow(tft, i);
         AccountList::drawIdleFooter(tft);
     }
 
@@ -92,36 +95,37 @@ namespace {
         tft.drawLine(xr, rUpper, cx, bottom, color);
     }
 
-    void drawSyncTime(TFT_eSPI &tft) {
-        drawHeader(tft, "Sync Time");
-
+    void drawSyncButton(TFT_eSPI &tft, int i) {
         int btnW = (tft.width() - SYNC_BTN_GAP * (SYNC_BTN_COUNT + 1)) / SYNC_BTN_COUNT;
         const char *labels[SYNC_BTN_COUNT] = {"WiFi", "Bluetooth"};
 
-        for (int i = 0; i < SYNC_BTN_COUNT; i++) {
-            int x = SYNC_BTN_GAP + i * (btnW + SYNC_BTN_GAP);
-            bool sel = i == syncMenuSelected;
-            uint16_t accent = sel ? TOKEN_BLUE : TFT_DARKGREY;
+        int x = SYNC_BTN_GAP + i * (btnW + SYNC_BTN_GAP);
+        bool sel = i == syncMenuSelected;
+        uint16_t accent = sel ? TOKEN_BLUE : TFT_DARKGREY;
 
-            if (sel) {
-                tft.fillRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, TOKEN_BLUE_DIM);
-            }
-            tft.drawRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, accent);
+        tft.fillRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, TFT_BLACK);
+        if (sel) {
+            tft.fillRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, TOKEN_BLUE_DIM);
+        }
+        tft.drawRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, accent);
 
-            int cx = x + btnW / 2;
-            int iconCy = SYNC_BTN_TOP + SYNC_BTN_H / 2 - 14;
+        int cx = x + btnW / 2;
+        int iconCy = SYNC_BTN_TOP + SYNC_BTN_H / 2 - 14;
 
-            if (i == 0) {
-                drawWifiIcon(tft, cx, iconCy, accent);
-            } else {
-                drawBluetoothIcon(tft, cx, iconCy, accent);
-            }
-
-            tft.setTextDatum(BC_DATUM);
-            tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
-            tft.drawString(labels[i], cx, SYNC_BTN_TOP + SYNC_BTN_H - 8, 2);
+        if (i == 0) {
+            drawWifiIcon(tft, cx, iconCy, accent);
+        } else {
+            drawBluetoothIcon(tft, cx, iconCy, accent);
         }
 
+        tft.setTextDatum(BC_DATUM);
+        tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+        tft.drawString(labels[i], cx, SYNC_BTN_TOP + SYNC_BTN_H - 8, 2);
+    }
+
+    void drawSyncTime(TFT_eSPI &tft) {
+        drawHeader(tft, "Sync Time");
+        for (int i = 0; i < SYNC_BTN_COUNT; i++) drawSyncButton(tft, i);
         AccountList::drawIdleFooter(tft);
     }
 
@@ -135,15 +139,14 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
-    void drawSystem(TFT_eSPI &tft) {
-        drawHeader(tft, "System");
-
+    // Just the pct readout + bar -- the part that changes as the encoder
+    // adjusts brightness. The pct text is cleared to a fixed-size band
+    // first since its width varies ("5%" vs "100%"), which drawString's
+    // own background-fill wouldn't fully cover on a shrink.
+    void drawBrightnessValue(TFT_eSPI &tft) {
         uint8_t level = Backlight::getLevel();
 
-        tft.setTextDatum(TL_DATUM);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString("Brightness", 16, 38, 2);
-
+        tft.fillRect(tft.width() - 60, 36, 44, 18, TFT_BLACK);
         char pct[8];
         snprintf(pct, sizeof(pct), "%d%%", level);
         tft.setTextDatum(TR_DATUM);
@@ -155,6 +158,16 @@ namespace {
         int fillW = (barW - 2) * level / 100;
         tft.fillRect(barX + 1, barY + 1, fillW, barH - 2, TOKEN_BLUE);
         tft.fillRect(barX + 1 + fillW, barY + 1, barW - 2 - fillW, barH - 2, TFT_BLACK);
+    }
+
+    void drawSystem(TFT_eSPI &tft) {
+        drawHeader(tft, "System");
+
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Brightness", 16, 38, 2);
+
+        drawBrightnessValue(tft);
 
         drawInfoRow(tft, 100, "Free heap", String(ESP.getFreeHeap() / 1024) + " KB");
         drawInfoRow(tft, 116, "Uptime", String(millis() / 1000) + " s");
@@ -162,17 +175,15 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
-    void drawTimeZone(TFT_eSPI &tft) {
-        drawHeader(tft, "Time Zone");
-
+    // The offset readout + local-time preview -- the part that changes as
+    // the encoder adjusts the offset. The offset string is a fixed 6
+    // characters ("+01:00"), so drawString's own background fill is
+    // enough; no explicit clear needed the way the brightness pct does.
+    void drawTimeZoneValue(TFT_eSPI &tft) {
         int offset = TimeSync::utcOffsetMinutes();
         char offsetStr[8];
         snprintf(offsetStr, sizeof(offsetStr), "%c%02d:%02d", offset < 0 ? '-' : '+',
                  abs(offset) / 60, abs(offset) % 60);
-
-        tft.setTextDatum(TL_DATUM);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString("UTC offset", 16, 38, 2);
 
         tft.setTextDatum(TR_DATUM);
         tft.setTextColor(TOKEN_BLUE_LIGHT, TFT_BLACK);
@@ -186,6 +197,16 @@ namespace {
             snprintf(localStr, sizeof(localStr), "%02d:%02d", tmVal.tm_hour, tmVal.tm_min);
         }
         drawInfoRow(tft, 74, "Local time now", localStr);
+    }
+
+    void drawTimeZone(TFT_eSPI &tft) {
+        drawHeader(tft, "Time Zone");
+
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("UTC offset", 16, 38, 2);
+
+        drawTimeZoneValue(tft);
 
         tft.setTextDatum(MC_DATUM);
         tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
@@ -230,27 +251,33 @@ void Settings::redraw(TFT_eSPI &tft) {
 
 void Settings::scroll(TFT_eSPI &tft, int delta) {
     switch (page) {
-        case Page::Menu:
+        case Page::Menu: {
+            int oldSelected = menuSelected;
             menuSelected = ((menuSelected + delta) % MENU_COUNT + MENU_COUNT) % MENU_COUNT;
-            drawCurrentPage(tft);
+            drawMenuRow(tft, oldSelected);
+            drawMenuRow(tft, menuSelected);
             break;
+        }
 
         case Page::SyncTime:
             syncMenuSelected = ((syncMenuSelected + delta) % SYNC_BTN_COUNT + SYNC_BTN_COUNT) % SYNC_BTN_COUNT;
-            drawCurrentPage(tft);
+            // Only two buttons total -- redrawing both is cheap and avoids
+            // tracking which one changed.
+            drawSyncButton(tft, 0);
+            drawSyncButton(tft, 1);
             break;
 
         case Page::System: {
             int level = (int)Backlight::getLevel() + delta * BRIGHTNESS_STEP;
             Backlight::setLevel((uint8_t)constrain(level, 0, 100));
-            drawCurrentPage(tft);
+            drawBrightnessValue(tft);
             break;
         }
 
         case Page::TimeZone: {
             int offset = TimeSync::utcOffsetMinutes() + delta * TIMEZONE_STEP_MINUTES;
             TimeSync::setUtcOffsetMinutes(constrain(offset, TIMEZONE_MIN_MINUTES, TIMEZONE_MAX_MINUTES));
-            drawCurrentPage(tft);
+            drawTimeZoneValue(tft);
             break;
         }
 
