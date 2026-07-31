@@ -25,6 +25,9 @@ when it shipped in any particular build.
 - The Bluetooth icon on the Sync Time screen rendered as a crossed star
   instead of the bowtie shape -- its connecting lines were drawn in the
   wrong order.
+- The WiFi icon on the Sync Time screen rendered upside down (0 degrees
+  in TFT_eSPI's drawArc is 6 o'clock, not 12), and its arcs swept a full
+  semicircle down to the horizontal instead of a narrower fan; both fixed.
 
 ### Added
 - Rotary encoder scrolling through the account list, with a trailing

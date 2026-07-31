@@ -71,10 +71,14 @@ namespace {
     }
 
     void drawWifiIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+        // TFT_eSPI's drawArc has 0 degrees at 6 o'clock, sweeping clockwise
+        // -- so straight up is 180, and 45 degrees either side of that
+        // (135/225) gives a narrow upward fan instead of a full dome
+        // reaching all the way down to the horizontal (90/270).
         tft.fillCircle(cx, cy, 3, color);
-        tft.drawArc(cx, cy, 12, 9, 270, 90, color, TFT_BLACK, true);
-        tft.drawArc(cx, cy, 21, 18, 270, 90, color, TFT_BLACK, true);
-        tft.drawArc(cx, cy, 30, 27, 270, 90, color, TFT_BLACK, true);
+        tft.drawArc(cx, cy, 12, 9, 135, 225, color, TFT_BLACK, true);
+        tft.drawArc(cx, cy, 21, 18, 135, 225, color, TFT_BLACK, true);
+        tft.drawArc(cx, cy, 30, 27, 135, 225, color, TFT_BLACK, true);
     }
 
     // A simplified version of the Bluetooth rune-bind glyph: a vertical
