@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 
 #include <WiFi.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include "time_sync.h"
@@ -68,6 +69,16 @@ bool WifiManager::connect(const String &ssid, const String &password, uint32_t t
 }
 
 bool WifiManager::syncTime(uint32_t timeoutMs) {
+    // The ESP32's RTC-backed system clock survives deep sleep (deliberately
+    // -- it's what lets the side button wake the device), so a stale value
+    // from a previous sync can still be sitting there. getLocalTime() only
+    // checks that the year looks plausible, not that a fresh NTP reply
+    // actually arrived, so it'll happily report success against leftover
+    // stale time. Zero the clock first so that check can only pass once a
+    // real reply sets it forward.
+    struct timeval zero = {0, 0};
+    settimeofday(&zero, nullptr);
+
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
     struct tm timeinfo;
