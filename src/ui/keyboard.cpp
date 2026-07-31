@@ -21,9 +21,13 @@ namespace {
     constexpr int TOTAL_ROWS = CHAR_ROWS + 1;
 
     constexpr int MAX_BUFFER = 63;
-    constexpr int HEADER_H = 34;
+    constexpr int PROMPT_Y = 4;
+    constexpr int BUFFER_Y = 20;
+    constexpr int HEADER_LINE_Y = 38; // below the buffer text's ~16px height, so it doesn't clip it
+    constexpr int HEADER_H = 40;
     constexpr int FOOTER_BAND_H = 14;
     constexpr int KEY_FONT = 2;
+    constexpr int LEFT_MARGIN = 13;
 
     char buf[MAX_BUFFER + 1] = "";
     int bufLen = 0;
@@ -66,17 +70,17 @@ namespace {
     int rowHeight(TFT_eSPI &tft) { return keyboardHeight(tft) / TOTAL_ROWS; }
 
     void drawHeader(TFT_eSPI &tft) {
-        tft.fillRect(0, 0, tft.width(), HEADER_H - 2, TFT_BLACK);
+        tft.fillRect(0, 0, tft.width(), HEADER_H, TFT_BLACK);
 
         tft.setTextDatum(TL_DATUM);
         tft.setTextColor(TOKEN_BLUE, TFT_BLACK);
-        tft.drawString(promptText, 10, 4, 2);
+        tft.drawString(promptText, LEFT_MARGIN, PROMPT_Y, 2);
 
         String shown = String(buf) + "_";
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString(shown, 10, 20, 2);
+        tft.drawString(shown, LEFT_MARGIN, BUFFER_Y, 2);
 
-        tft.drawFastHLine(0, HEADER_H - 2, tft.width(), TOKEN_BLUE);
+        tft.drawFastHLine(0, HEADER_LINE_Y, tft.width(), TOKEN_BLUE);
     }
 
     void drawCharRow(TFT_eSPI &tft, int row, int y, int h) {
@@ -89,8 +93,8 @@ namespace {
             int x = c * cellW;
 
             if (sel) {
-                tft.fillRoundRect(x + 1, y + 1, cellW - 2, h - 2, 3, TOKEN_BLUE_DIM);
-                tft.drawRoundRect(x + 1, y + 1, cellW - 2, h - 2, 3, TOKEN_BLUE);
+                tft.fillRoundRect(x + 2, y + 2, cellW - 4, h - 4, 3, TOKEN_BLUE_DIM);
+                tft.drawRoundRect(x + 2, y + 2, cellW - 4, h - 4, 3, TOKEN_BLUE);
             }
 
             char label[2] = {chars[c], '\0'};
@@ -108,8 +112,8 @@ namespace {
             bool sel = cursorRow == ACTION_ROW && c == cursorCol;
             int x = c * cellW;
 
-            tft.fillRoundRect(x + 4, y + 2, cellW - 8, h - 4, 4, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
-            tft.drawRoundRect(x + 4, y + 2, cellW - 8, h - 4, 4, sel ? TOKEN_BLUE : TFT_DARKGREY);
+            tft.fillRoundRect(x + 6, y + 2, cellW - 12, h - 4, 4, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+            tft.drawRoundRect(x + 6, y + 2, cellW - 12, h - 4, 4, sel ? TOKEN_BLUE : TFT_DARKGREY);
 
             tft.setTextDatum(MC_DATUM);
             tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
