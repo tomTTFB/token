@@ -32,6 +32,10 @@ when it shipped in any particular build.
   vertical center, since the WiFi icon anchors on its dot (near the
   bottom of its arcs) while Bluetooth anchors on its true center --
   the WiFi icon's dot now sits low enough that the two line up.
+- The WiFi icon's arcs hardcoded black as their anti-aliasing background,
+  which showed up as a visible dark halo around the arcs whenever the
+  WiFi button was selected (its actual background is blue-tinted, not
+  black). Now passes whatever the button's real background is.
 
 ### Added
 - Rotary encoder scrolling through the account list, with a trailing

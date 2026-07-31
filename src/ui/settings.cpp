@@ -70,7 +70,11 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
-    void drawWifiIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+    // bg must match whatever's actually behind the icon (the button fill,
+    // which differs selected vs. not) -- drawArc's anti-aliased edges
+    // blend toward it, so a mismatched bg shows up as a visible halo
+    // around the arcs.
+    void drawWifiIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color, uint16_t bg) {
         // TFT_eSPI's drawArc has 0 degrees at 6 o'clock, sweeping clockwise
         // -- so straight up is 180, and 45 degrees either side of that
         // (135/225) gives a narrow upward fan instead of a full dome
@@ -83,9 +87,9 @@ namespace {
         // icons line up when drawn at the same height.
         int dotY = cy + 14;
         tft.fillCircle(cx, dotY, 3, color);
-        tft.drawArc(cx, dotY, 12, 9, 135, 225, color, TFT_BLACK, true);
-        tft.drawArc(cx, dotY, 21, 18, 135, 225, color, TFT_BLACK, true);
-        tft.drawArc(cx, dotY, 30, 27, 135, 225, color, TFT_BLACK, true);
+        tft.drawArc(cx, dotY, 12, 9, 135, 225, color, bg, true);
+        tft.drawArc(cx, dotY, 21, 18, 135, 225, color, bg, true);
+        tft.drawArc(cx, dotY, 30, 27, 135, 225, color, bg, true);
     }
 
     // The Bluetooth rune-bind glyph: a vertical spine, with two vertices
@@ -131,7 +135,7 @@ namespace {
         int iconCy = SYNC_BTN_TOP + SYNC_BTN_H / 2 - 14;
 
         if (i == 0) {
-            drawWifiIcon(tft, cx, iconCy, accent);
+            drawWifiIcon(tft, cx, iconCy, accent, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
         } else {
             drawBluetoothIcon(tft, cx, iconCy, accent);
         }
