@@ -4,6 +4,7 @@
 
 #include "account_list.h"
 #include "backlight.h"
+#include "ble_time_sync.h"
 #include "colors.h"
 #include "time_sync.h"
 
@@ -27,6 +28,14 @@ namespace {
     Page page = Page::Menu;
     int menuSelected = 0;
     int syncMenuSelected = 0; // 0 = WiFi, 1 = Bluetooth
+
+    // What drawBleSyncBody() last actually painted -- compared against the
+    // live BleTimeSync state on every poll(). Comparing against the
+    // previous poll's *reading* instead of this would miss a transition
+    // that completes entirely between two polls (the whole connect ->
+    // bond -> discover -> read chain can finish in well under one loop()
+    // tick), leaving the screen stuck on a stale status forever.
+    BleTimeSync::State lastDrawnBleState = BleTimeSync::State::Idle;
 
     void drawHeader(TFT_eSPI &tft, const char *title) {
         tft.fillScreen(TFT_BLACK);
@@ -157,13 +166,62 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
-    void drawBluetoothSync(TFT_eSPI &tft) {
-        drawHeader(tft, "Bluetooth Sync");
+    // Just the status text -- the part that changes as BleTimeSync's state
+    // machine advances. Cleared to the band between the header rule and
+    // the footer band (see FOOTER_BAND_H in account_list.cpp) so repeated
+    // polling redraws don't touch either of those.
+    void drawBleSyncBody(TFT_eSPI &tft) {
+        const char *line1 = "";
+        const char *line2 = "";
+        uint16_t color2 = TFT_DARKGREY;
+        char timeStr[32];
+
+        switch (BleTimeSync::state()) {
+            case BleTimeSync::State::Idle:
+            case BleTimeSync::State::Advertising:
+                line1 = "Advertising as \"Token\"";
+                line2 = "Pair from your phone's Bluetooth settings";
+                break;
+            case BleTimeSync::State::Bonding:
+                line1 = "Connected";
+                line2 = "Confirm pairing on your phone...";
+                break;
+            case BleTimeSync::State::Reading:
+                line1 = "Paired";
+                line2 = "Reading time...";
+                break;
+            case BleTimeSync::State::Success: {
+                time_t now = TimeSync::now();
+                struct tm tmVal;
+                gmtime_r(&now, &tmVal);
+                snprintf(timeStr, sizeof(timeStr), "Time: %02d:%02d:%02d UTC", tmVal.tm_hour, tmVal.tm_min,
+                         tmVal.tm_sec);
+                line1 = "Success!";
+                line2 = timeStr;
+                color2 = TOKEN_BLUE;
+                break;
+            }
+            case BleTimeSync::State::Failed:
+                line1 = "Sync failed";
+                line2 = "back: retry / return";
+                color2 = TFT_RED;
+                break;
+        }
+
+        tft.fillRect(0, 27, tft.width(), tft.height() - 27 - 14, TFT_BLACK);
 
         tft.setTextDatum(MC_DATUM);
-        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-        tft.drawString("Coming soon", tft.width() / 2, tft.height() / 2, 2);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(line1, tft.width() / 2, tft.height() / 2 - 12, 2);
 
+        tft.setTextColor(color2, TFT_BLACK);
+        tft.drawString(line2, tft.width() / 2, tft.height() / 2 + 14, 1);
+    }
+
+    void drawBluetoothSync(TFT_eSPI &tft) {
+        drawHeader(tft, "Bluetooth Sync");
+        drawBleSyncBody(tft);
+        lastDrawnBleState = BleTimeSync::state();
         AccountList::drawIdleFooter(tft);
     }
 
@@ -332,6 +390,7 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
             return Action::OpenWifiList;
         }
         page = Page::BluetoothSync;
+        BleTimeSync::begin();
         drawCurrentPage(tft);
     }
 
@@ -343,6 +402,7 @@ bool Settings::back(TFT_eSPI &tft) {
         case Page::Menu:
             return false;
         case Page::BluetoothSync:
+            BleTimeSync::stop();
             page = Page::SyncTime;
             break;
         default:
@@ -351,4 +411,14 @@ bool Settings::back(TFT_eSPI &tft) {
     }
     drawCurrentPage(tft);
     return true;
+}
+
+void Settings::poll(TFT_eSPI &tft) {
+    if (page != Page::BluetoothSync) return;
+
+    BleTimeSync::poll();
+    if (BleTimeSync::state() != lastDrawnBleState) {
+        drawBleSyncBody(tft);
+        lastDrawnBleState = BleTimeSync::state();
+    }
 }

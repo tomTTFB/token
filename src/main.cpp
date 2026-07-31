@@ -179,6 +179,10 @@ void loop() {
         }
     }
 
+    if (currentScreen == Screen::Settings) {
+        Settings::poll(tft);
+    }
+
     uint32_t now = millis();
     if (currentScreen == Screen::AccountList && now - lastHeaderRefreshMs >= HEADER_REFRESH_MS) {
         Battery::poll();

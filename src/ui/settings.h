@@ -33,4 +33,9 @@ namespace Settings {
     // press was handled within settings; false if the caller should leave
     // settings entirely (already at the top menu).
     bool back(TFT_eSPI &tft);
+
+    // Must be called every loop() iteration while Settings is the active
+    // screen. No-op except on the Bluetooth Sync page, where it drives
+    // BleTimeSync's state machine and redraws the status text on change.
+    void poll(TFT_eSPI &tft);
 }
