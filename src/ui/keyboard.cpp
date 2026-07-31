@@ -69,69 +69,84 @@ namespace {
     int keyboardHeight(TFT_eSPI &tft) { return tft.height() - FOOTER_BAND_H - HEADER_H; }
     int rowHeight(TFT_eSPI &tft) { return keyboardHeight(tft) / TOTAL_ROWS; }
 
-    void drawHeader(TFT_eSPI &tft) {
-        tft.fillRect(0, 0, tft.width(), HEADER_H, TFT_BLACK);
-
+    // The prompt label and divider line are static for the life of the
+    // screen -- drawn once on entry, never touched again.
+    void drawPromptAndLine(TFT_eSPI &tft) {
         tft.setTextDatum(TL_DATUM);
         tft.setTextColor(TOKEN_BLUE, TFT_BLACK);
         tft.drawString(promptText, LEFT_MARGIN, PROMPT_Y, 2);
-
-        String shown = String(buf) + "_";
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString(shown, LEFT_MARGIN, BUFFER_Y, 2);
-
         tft.drawFastHLine(0, HEADER_LINE_Y, tft.width(), TOKEN_BLUE);
     }
 
-    void drawCharRow(TFT_eSPI &tft, int row, int y, int h) {
-        const char *chars = ROWS[row];
-        int len = strlen(chars);
-        int cellW = tft.width() / len;
+    // The typed-so-far buffer, redrawn on every keypress/backspace. Clears
+    // a fixed-size band first (rather than relying on drawString's
+    // background fill) so a shrinking buffer doesn't leave stale
+    // characters behind from a longer previous string.
+    void drawBuffer(TFT_eSPI &tft) {
+        tft.fillRect(0, BUFFER_Y - 2, tft.width(), 20, TFT_BLACK);
 
-        for (int c = 0; c < len; c++) {
-            bool sel = row == cursorRow && c == cursorCol;
-            int x = c * cellW;
-
-            if (sel) {
-                tft.fillRoundRect(x + 2, y + 2, cellW - 4, h - 4, 3, TOKEN_BLUE_DIM);
-                tft.drawRoundRect(x + 2, y + 2, cellW - 4, h - 4, 3, TOKEN_BLUE);
-            }
-
-            char label[2] = {chars[c], '\0'};
-            tft.setTextDatum(MC_DATUM);
-            tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
-            tft.drawString(label, x + cellW / 2, y + h / 2, KEY_FONT);
-        }
+        String shown = String(buf) + "_";
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(shown, LEFT_MARGIN, BUFFER_Y, 2);
     }
 
-    void drawActionRow(TFT_eSPI &tft, int y, int h) {
-        int cellW = tft.width() / 2;
-        const char *labels[2] = {"DEL", "DONE"};
+    void charCellRect(TFT_eSPI &tft, int row, int col, int &x, int &y, int &w, int &h) {
+        h = rowHeight(tft);
+        y = keyboardTop() + row * h;
+        int len = rowLength(row);
+        w = tft.width() / len;
+        x = col * w;
+    }
 
-        for (int c = 0; c < 2; c++) {
-            bool sel = cursorRow == ACTION_ROW && c == cursorCol;
-            int x = c * cellW;
+    void actionCellRect(TFT_eSPI &tft, int col, int &x, int &y, int &w, int &h) {
+        h = rowHeight(tft);
+        y = keyboardTop() + ACTION_ROW * h;
+        w = tft.width() / 2;
+        x = col * w;
+    }
 
-            tft.fillRoundRect(x + 6, y + 2, cellW - 12, h - 4, 4, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
-            tft.drawRoundRect(x + 6, y + 2, cellW - 12, h - 4, 4, sel ? TOKEN_BLUE : TFT_DARKGREY);
+    void drawCell(TFT_eSPI &tft, int row, int col, bool sel) {
+        int x, y, w, h;
+
+        if (row == ACTION_ROW) {
+            actionCellRect(tft, col, x, y, w, h);
+            const char *labels[2] = {"DEL", "DONE"};
+
+            tft.fillRect(x, y, w, h, TFT_BLACK);
+            tft.fillRoundRect(x + 6, y + 2, w - 12, h - 4, 4, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+            tft.drawRoundRect(x + 6, y + 2, w - 12, h - 4, 4, sel ? TOKEN_BLUE : TFT_DARKGREY);
 
             tft.setTextDatum(MC_DATUM);
             tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
-            tft.drawString(labels[c], x + cellW / 2, y + h / 2, KEY_FONT);
+            tft.drawString(labels[col], x + w / 2, y + h / 2, KEY_FONT);
+            return;
         }
+
+        charCellRect(tft, row, col, x, y, w, h);
+
+        // Clear the cell's own rectangle first: redrawing just this one
+        // cell (instead of the whole grid) means an unselected cell has to
+        // erase its own leftover highlight, since nothing else repaints it.
+        tft.fillRect(x, y, w, h, TFT_BLACK);
+        if (sel) {
+            tft.fillRoundRect(x + 2, y + 2, w - 4, h - 4, 3, TOKEN_BLUE_DIM);
+            tft.drawRoundRect(x + 2, y + 2, w - 4, h - 4, 3, TOKEN_BLUE);
+        }
+
+        char label[2] = {ROWS[row][col], '\0'};
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+        tft.drawString(label, x + w / 2, y + h / 2, KEY_FONT);
     }
 
     void drawGrid(TFT_eSPI &tft) {
-        int h = rowHeight(tft);
-        int y = keyboardTop();
-
-        tft.fillRect(0, y, tft.width(), keyboardHeight(tft), TFT_BLACK);
-
-        for (int row = 0; row < CHAR_ROWS; row++) {
-            drawCharRow(tft, row, y, h);
-            y += h;
+        for (int row = 0; row < TOTAL_ROWS; row++) {
+            int len = rowLength(row);
+            for (int col = 0; col < len; col++) {
+                drawCell(tft, row, col, row == cursorRow && col == cursorCol);
+            }
         }
-        drawActionRow(tft, y, h);
     }
 }
 
@@ -143,7 +158,8 @@ void Keyboard::enter(TFT_eSPI &tft, const char *prompt) {
     cursorCol = 0;
 
     tft.fillScreen(TFT_BLACK);
-    drawHeader(tft);
+    drawPromptAndLine(tft);
+    drawBuffer(tft);
     drawGrid(tft);
     AccountList::drawIdleFooter(tft);
 }
@@ -152,8 +168,14 @@ void Keyboard::scroll(TFT_eSPI &tft, int delta) {
     int total = totalCells();
     int index = flatten(cursorRow, cursorCol);
     index = ((index + delta) % total + total) % total;
+
+    int oldRow = cursorRow, oldCol = cursorCol;
     unflatten(index);
-    drawGrid(tft);
+
+    // Only the two cells whose selection state actually changed need to be
+    // touched -- not the whole grid.
+    drawCell(tft, oldRow, oldCol, false);
+    drawCell(tft, cursorRow, cursorCol, true);
 }
 
 bool Keyboard::press(TFT_eSPI &tft) {
@@ -166,7 +188,7 @@ bool Keyboard::press(TFT_eSPI &tft) {
     } else if (bufLen < MAX_BUFFER) {
         buf[bufLen++] = ROWS[cursorRow][cursorCol];
         buf[bufLen] = '\0';
-        drawHeader(tft);
+        drawBuffer(tft);
     }
     return false;
 }
@@ -174,7 +196,7 @@ bool Keyboard::press(TFT_eSPI &tft) {
 bool Keyboard::backspace(TFT_eSPI &tft) {
     if (bufLen == 0) return false;
     buf[--bufLen] = '\0';
-    drawHeader(tft);
+    drawBuffer(tft);
     return true;
 }
 
