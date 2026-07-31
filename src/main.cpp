@@ -79,7 +79,10 @@ void loop() {
 
     long newPos = encoder.getPosition();
     if (newPos != encoderPos) {
-        int delta = (int)(newPos - encoderPos);
+        // The encoder's quadrature phase reads backwards relative to its
+        // printed rotation direction on this board, so invert here rather
+        // than swapping ENCODER_INA/ENCODER_INB.
+        int delta = (int)(encoderPos - newPos);
         encoderPos = newPos;
 
         if (currentScreen == Screen::AccountList) {
