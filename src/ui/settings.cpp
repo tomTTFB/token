@@ -7,7 +7,7 @@
 #include "colors.h"
 
 namespace {
-    enum class Page { Menu, SyncTime, System, About };
+    enum class Page { Menu, SyncTime, BluetoothSync, System, About };
 
     const char *MENU_ITEMS[] = {"Sync Time", "System", "About"};
     constexpr int MENU_COUNT = 3;
@@ -15,8 +15,14 @@ namespace {
     constexpr int MENU_ROW_H = 26;
     constexpr uint8_t BRIGHTNESS_STEP = 5;
 
+    constexpr int SYNC_BTN_TOP = 30;
+    constexpr int SYNC_BTN_H = 122;
+    constexpr int SYNC_BTN_GAP = 8;
+    constexpr int SYNC_BTN_COUNT = 2;
+
     Page page = Page::Menu;
     int menuSelected = 0;
+    int syncMenuSelected = 0; // 0 = WiFi, 1 = Bluetooth
 
     void drawHeader(TFT_eSPI &tft, const char *title) {
         tft.fillScreen(TFT_BLACK);
@@ -57,13 +63,70 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
+    void drawWifiIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+        tft.fillCircle(cx, cy, 3, color);
+        tft.drawArc(cx, cy, 12, 9, 270, 90, color, TFT_BLACK, true);
+        tft.drawArc(cx, cy, 21, 18, 270, 90, color, TFT_BLACK, true);
+        tft.drawArc(cx, cy, 30, 27, 270, 90, color, TFT_BLACK, true);
+    }
+
+    // A simplified version of the Bluetooth rune-bind glyph: a vertical
+    // stroke with a bowtie crossing it on the right.
+    void drawBluetoothIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+        int h = 44, w = 26;
+        int top = cy - h / 2;
+        int bottom = cy + h / 2;
+        int mid = cy;
+        int rUpper = cy - h / 4;
+        int rLower = cy + h / 4;
+        int xr = cx + w / 2;
+
+        tft.drawLine(cx, top, cx, bottom, color);
+        tft.drawLine(cx, top, xr, rLower, color);
+        tft.drawLine(xr, rLower, cx, mid, color);
+        tft.drawLine(cx, mid, xr, rUpper, color);
+        tft.drawLine(xr, rUpper, cx, bottom, color);
+    }
+
     void drawSyncTime(TFT_eSPI &tft) {
         drawHeader(tft, "Sync Time");
 
+        int btnW = (tft.width() - SYNC_BTN_GAP * (SYNC_BTN_COUNT + 1)) / SYNC_BTN_COUNT;
+        const char *labels[SYNC_BTN_COUNT] = {"WiFi", "Bluetooth"};
+
+        for (int i = 0; i < SYNC_BTN_COUNT; i++) {
+            int x = SYNC_BTN_GAP + i * (btnW + SYNC_BTN_GAP);
+            bool sel = i == syncMenuSelected;
+            uint16_t accent = sel ? TOKEN_BLUE : TFT_DARKGREY;
+
+            if (sel) {
+                tft.fillRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, TOKEN_BLUE_DIM);
+            }
+            tft.drawRoundRect(x, SYNC_BTN_TOP, btnW, SYNC_BTN_H, 8, accent);
+
+            int cx = x + btnW / 2;
+            int iconCy = SYNC_BTN_TOP + SYNC_BTN_H / 2 - 14;
+
+            if (i == 0) {
+                drawWifiIcon(tft, cx, iconCy, accent);
+            } else {
+                drawBluetoothIcon(tft, cx, iconCy, accent);
+            }
+
+            tft.setTextDatum(BC_DATUM);
+            tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+            tft.drawString(labels[i], cx, SYNC_BTN_TOP + SYNC_BTN_H - 8, 2);
+        }
+
+        AccountList::drawIdleFooter(tft);
+    }
+
+    void drawBluetoothSync(TFT_eSPI &tft) {
+        drawHeader(tft, "Bluetooth Sync");
+
         tft.setTextDatum(MC_DATUM);
         tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-        tft.drawString("WiFi not configured", tft.width() / 2, tft.height() / 2 - 10, 2);
-        tft.drawString("set up WiFi to sync time", tft.width() / 2, tft.height() / 2 + 12, 1);
+        tft.drawString("Coming soon", tft.width() / 2, tft.height() / 2, 2);
 
         AccountList::drawIdleFooter(tft);
     }
@@ -111,6 +174,7 @@ namespace {
         switch (page) {
             case Page::Menu: drawMenu(tft); break;
             case Page::SyncTime: drawSyncTime(tft); break;
+            case Page::BluetoothSync: drawBluetoothSync(tft); break;
             case Page::System: drawSystem(tft); break;
             case Page::About: drawAbout(tft); break;
         }
@@ -123,10 +187,19 @@ void Settings::enter(TFT_eSPI &tft) {
     drawCurrentPage(tft);
 }
 
+void Settings::redraw(TFT_eSPI &tft) {
+    drawCurrentPage(tft);
+}
+
 void Settings::scroll(TFT_eSPI &tft, int delta) {
     switch (page) {
         case Page::Menu:
             menuSelected = ((menuSelected + delta) % MENU_COUNT + MENU_COUNT) % MENU_COUNT;
+            drawCurrentPage(tft);
+            break;
+
+        case Page::SyncTime:
+            syncMenuSelected = ((syncMenuSelected + delta) % SYNC_BTN_COUNT + SYNC_BTN_COUNT) % SYNC_BTN_COUNT;
             drawCurrentPage(tft);
             break;
 
@@ -137,27 +210,45 @@ void Settings::scroll(TFT_eSPI &tft, int delta) {
             break;
         }
 
-        case Page::SyncTime:
+        case Page::BluetoothSync:
         case Page::About:
             break; // read-only pages
     }
 }
 
-void Settings::press(TFT_eSPI &tft) {
-    if (page != Page::Menu) return;
-
-    switch (menuSelected) {
-        case 0: page = Page::SyncTime; break;
-        case 1: page = Page::System; break;
-        case 2: page = Page::About; break;
+Settings::Action Settings::press(TFT_eSPI &tft) {
+    if (page == Page::Menu) {
+        switch (menuSelected) {
+            case 0: page = Page::SyncTime; break;
+            case 1: page = Page::System; break;
+            case 2: page = Page::About; break;
+        }
+        drawCurrentPage(tft);
+        return Action::None;
     }
-    drawCurrentPage(tft);
+
+    if (page == Page::SyncTime) {
+        if (syncMenuSelected == 0) {
+            return Action::OpenWifiList;
+        }
+        page = Page::BluetoothSync;
+        drawCurrentPage(tft);
+    }
+
+    return Action::None;
 }
 
 bool Settings::back(TFT_eSPI &tft) {
-    if (page == Page::Menu) return false;
-
-    page = Page::Menu;
+    switch (page) {
+        case Page::Menu:
+            return false;
+        case Page::BluetoothSync:
+            page = Page::SyncTime;
+            break;
+        default:
+            page = Page::Menu;
+            break;
+    }
     drawCurrentPage(tft);
     return true;
 }
