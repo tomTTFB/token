@@ -1,8 +1,18 @@
-# T-Embed CC1101 Hello World
+# Token
 
-Minimal firmware for the [LilyGO T-Embed CC1101](https://www.lilygo.cc) (ESP32-S3 +
-1.9" ST7789 display + CC1101 sub-GHz radio). Draws "Hello, World!" on the screen,
-pulses the onboard WS2812 LEDs as a heartbeat, and logs over serial.
+Firmware for the [LilyGO T-Embed CC1101](https://www.lilygo.cc) (ESP32-S3 +
+1.9" ST7789 display + CC1101 sub-GHz radio), built toward a hardware TOTP
+(2FA) authenticator: codes generated and shown entirely offline on the
+device, no phone or cloud involved.
+
+Currently implemented:
+
+- Boot animation — a Token-blue digital rain effect with an ASCII key logo
+  and wordmark layered on top
+- A placeholder account list screen (static entries, `000000` fake codes)
+- Hold-to-shutdown — holding the physical side button for 5 seconds shows a
+  countdown, then powers the device down; pressing the same button wakes it
+  back up
 
 Pin mappings are sourced from LilyGO's official
 [Xinyuan-LilyGO/T-Embed-CC1101](https://github.com/Xinyuan-LilyGO/T-Embed-CC1101)
@@ -28,4 +38,7 @@ folder open — `platformio.ini` already selects the `T_Embed_CC1101` environmen
 - The display, TF card slot, and CC1101 radio share one SPI bus; `src/main.cpp`
   deselects the SD and radio chip-selects before initializing the display.
 - `BOARD_PWR_EN` (GPIO15) gates the peripheral power rail and must be driven
-  high before the display will respond.
+  high before the display will respond; it's also cut on shutdown.
+- `BOARD_USER_KEY` (GPIO6) is the physical side button used for the
+  hold-to-shutdown gesture — separate from `ENCODER_KEY` (GPIO0), the rotary
+  encoder's push button.
