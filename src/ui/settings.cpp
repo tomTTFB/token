@@ -88,30 +88,29 @@ namespace {
         tft.drawArc(cx, dotY, 30, 27, 135, 225, color, TFT_BLACK, true);
     }
 
-    // A simplified version of the Bluetooth rune-bind glyph: a vertical
-    // stroke with a bowtie crossing it on the right.
+    // The Bluetooth rune-bind glyph: a vertical spine, with two vertices
+    // on the right (at the quarter heights) that each fan out both to the
+    // spine's own top/bottom and further out to tips on the left, past
+    // the spine itself -- those extending tips are what actually make it
+    // read as the Bluetooth logo rather than a plain bowtie converging on
+    // the spine's center.
     void drawBluetoothIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
-        constexpr float THICKNESS = 2.4f;
-        constexpr int TAIL = 5;
+        constexpr int ICON_W = 36; // spine to each side's vertices
+        constexpr int ICON_H = 60;
+        constexpr float LINE_W = 4.0f;
 
-        int h = 44, w = 26;
-        int top = cy - h / 2;
-        int bottom = cy + h / 2;
-        int mid = cy;
-        int rUpper = cy - h / 4;
-        int rLower = cy + h / 4;
-        int xr = cx + w / 2;
+        int right = cx + ICON_W / 2;
+        int left = cx - ICON_W / 2;
+        int top = cy - ICON_H / 2;
+        int bottom = cy + ICON_H / 2;
+        int upperQ = cy - ICON_H / 4;
+        int lowerQ = cy + ICON_H / 4;
 
-        // Two triangles sharing the center point on the vertical line --
-        // top->upper-right->center forms one, center->lower-right->bottom
-        // the other. Crossing upper and lower here draws a star instead
-        // of the bowtie. The vertical stroke runs a little past the top
-        // and bottom vertices (short tails) rather than stopping blunt.
-        tft.drawWideLine(cx, top - TAIL, cx, bottom + TAIL, THICKNESS, color);
-        tft.drawWideLine(cx, top, xr, rUpper, THICKNESS, color);
-        tft.drawWideLine(xr, rUpper, cx, mid, THICKNESS, color);
-        tft.drawWideLine(cx, mid, xr, rLower, THICKNESS, color);
-        tft.drawWideLine(xr, rLower, cx, bottom, THICKNESS, color);
+        tft.drawWideLine(cx, top, cx, bottom, LINE_W, color);          // spine
+        tft.drawWideLine(right, lowerQ, left, upperQ, LINE_W, color);  // crossing diagonal
+        tft.drawWideLine(right, upperQ, left, lowerQ, LINE_W, color);  // crossing diagonal
+        tft.drawWideLine(right, lowerQ, cx, bottom, LINE_W, color);    // right-lower to spine bottom
+        tft.drawWideLine(right, upperQ, cx, top, LINE_W, color);       // right-upper to spine top
     }
 
     void drawSyncButton(TFT_eSPI &tft, int i) {

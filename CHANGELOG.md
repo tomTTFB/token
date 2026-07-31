@@ -50,6 +50,7 @@ when it shipped in any particular build.
 ### Changed
 - The side button's short-press behavior is now context-dependent: back
   on most screens, backspace on the keyboard screen.
-- The Bluetooth icon's strokes are wider and its vertical stroke now
-  runs a short tail past the top and bottom vertices instead of
-  stopping blunt at them.
+- The Bluetooth icon's diagonals now extend past the spine to tips on
+  the opposite side (rather than just converging on the spine's
+  center), matching the real logo's construction, and its strokes are
+  wider.
