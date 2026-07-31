@@ -88,11 +88,15 @@ namespace {
         int rLower = cy + h / 4;
         int xr = cx + w / 2;
 
+        // Two triangles sharing the center point on the vertical line --
+        // top->upper-right->center forms one, center->lower-right->bottom
+        // the other. Crossing upper and lower here draws a star instead
+        // of the bowtie.
         tft.drawLine(cx, top, cx, bottom, color);
-        tft.drawLine(cx, top, xr, rLower, color);
-        tft.drawLine(xr, rLower, cx, mid, color);
-        tft.drawLine(cx, mid, xr, rUpper, color);
-        tft.drawLine(xr, rUpper, cx, bottom, color);
+        tft.drawLine(cx, top, xr, rUpper, color);
+        tft.drawLine(xr, rUpper, cx, mid, color);
+        tft.drawLine(cx, mid, xr, rLower, color);
+        tft.drawLine(xr, rLower, cx, bottom, color);
     }
 
     void drawSyncButton(TFT_eSPI &tft, int i) {

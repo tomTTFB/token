@@ -22,6 +22,9 @@ when it shipped in any particular build.
   and starts counting down for the last 3 seconds of the hold, instead of
   from the moment the button is touched.
 - Rotary encoder direction was inverted relative to its physical rotation.
+- The Bluetooth icon on the Sync Time screen rendered as a crossed star
+  instead of the bowtie shape -- its connecting lines were drawn in the
+  wrong order.
 
 ### Added
 - Rotary encoder scrolling through the account list, with a trailing
