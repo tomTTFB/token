@@ -6,6 +6,7 @@
 #include "colors.h"
 #include "time_sync.h"
 #include "wifi_manager.h"
+#include "wifi_store.h"
 
 namespace {
     void drawStatus(TFT_eSPI &tft, const char *ssid, const char *line1, const char *line2, uint16_t color2) {
@@ -39,6 +40,11 @@ void SyncStatus::run(TFT_eSPI &tft, const String &ssid, const String &password) 
         WifiManager::disconnect();
         return;
     }
+
+    // Saved here rather than after the NTP step: associating is what proves
+    // the password is right, and a network worth reconnecting to at boot
+    // shouldn't be forgotten just because this particular sync timed out.
+    WifiStore::remember(ssid, password);
 
     drawStatus(tft, ssid.c_str(), "Syncing time...", "pool.ntp.org", TFT_DARKGREY);
 
