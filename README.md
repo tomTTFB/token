@@ -10,14 +10,22 @@ Currently implemented:
 - Boot animation — a Token-blue digital rain effect with an ASCII key logo
   and wordmark layered on top
 - An account list screen (static entries, `000000` fake codes) navigable with
-  the rotary encoder, windowed to the visible rows with scroll indicators
+  the rotary encoder, windowed to the visible rows with scroll indicators, and
+  a header showing the synced clock and battery percentage
 - A Settings screen reached by scrolling past the last account and pressing
-  the encoder: Sync Time (placeholder until WiFi is implemented), System
-  (live backlight brightness over PWM, free heap, uptime), and About
-  (firmware build time, chip model, flash size)
+  the encoder: Sync Time, System (live backlight brightness over PWM, free
+  heap, uptime), and About (firmware build time, chip model, flash size)
+- Sync Time offers WiFi and Bluetooth. WiFi scans for networks, connects
+  (via a full-screen keyboard for the password, if one is needed), and syncs
+  the clock over NTP. Bluetooth is a placeholder — there's no BLE protocol or
+  companion app defined yet
+- Battery percentage is estimated from the BQ25896 charger's voltage reading
+  against a typical single-cell LiPo curve; there's no coulomb-counting fuel
+  gauge wired up
 - Hold-to-shutdown — holding the physical side button for 5 seconds shows a
   countdown, then powers the device down; pressing the same button wakes it
-  back up. A short press instead acts as "back" out of a settings screen.
+  back up. A short press instead acts as "back" (or backspace, on the
+  keyboard screen)
 
 Pin mappings are sourced from LilyGO's official
 [Xinyuan-LilyGO/T-Embed-CC1101](https://github.com/Xinyuan-LilyGO/T-Embed-CC1101)
@@ -52,3 +60,9 @@ folder open — `platformio.ini` already selects the `T_Embed_CC1101` environmen
   and debounced in `main.cpp`.
 - Backlight brightness is driven over LEDC PWM on `TFT_BL` (GPIO21), since
   TFT_eSPI only ever drives that pin high on init.
+- The BQ25896 charger sits on the same I2C bus as the board's other
+  peripherals (`BOARD_I2C_SDA`/`BOARD_I2C_SCL`, GPIO8/18), read via
+  `XPowersLib`.
+- There's no NVS persistence layer in this project yet, so a synced clock
+  (and, eventually, stored accounts/PIN) only survives until the next
+  reboot or deep-sleep cycle.
