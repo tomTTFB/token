@@ -7,6 +7,8 @@
 #include "battery.h"
 #include "board_pins.h"
 #include "power.h"
+#include "wifi_auto.h"
+#include "wifi_store.h"
 #include "ui/account_list.h"
 #include "ui/boot_screen.h"
 #include "ui/keyboard.h"
@@ -79,8 +81,15 @@ void setup() {
     pixels.clear();
     pixels.show();
 
+    WifiStore::begin();
+
     BootScreen::play(tft);
     AccountList::draw(tft);
+
+    // Started after the list is on screen -- the whole sequence runs from
+    // loop(), so the UI is usable while it works in the background. The
+    // header clock switches from "--:--" to the real time when it lands.
+    WifiAuto::begin();
 
     Serial.println("Token is alive.");
 }
@@ -116,6 +125,10 @@ void loop() {
 
             case Screen::Settings:
                 if (Settings::press(tft) == Settings::Action::OpenWifiList) {
+                    // The manual flow drives the radio itself; a background
+                    // auto-connect still in flight would be competing with
+                    // it for the same hardware.
+                    WifiAuto::cancel();
                     currentScreen = Screen::WifiList;
                     WifiList::enter(tft);
                 }
@@ -178,6 +191,8 @@ void loop() {
                 break;
         }
     }
+
+    WifiAuto::poll();
 
     if (currentScreen == Screen::Settings) {
         Settings::poll(tft);

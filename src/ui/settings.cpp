@@ -7,6 +7,7 @@
 #include "ble_time_sync.h"
 #include "colors.h"
 #include "time_sync.h"
+#include "wifi_auto.h"
 
 namespace {
     enum class Page { Menu, SyncTime, BluetoothSync, System, About, TimeZone };
@@ -390,6 +391,9 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
             return Action::OpenWifiList;
         }
         page = Page::BluetoothSync;
+        // BLE and WiFi share the 2.4GHz radio -- don't leave a background
+        // auto-connect running underneath a pairing attempt.
+        WifiAuto::cancel();
         BleTimeSync::begin();
         drawCurrentPage(tft);
     }
