@@ -8,7 +8,6 @@
 
 namespace {
     constexpr uint32_t HOLD_MS = 5000;
-    constexpr const char *IDLE_HINT = "hold side button 5s to power off";
 
     uint32_t pressStart = 0;
     bool wasPressed = false;
@@ -33,8 +32,9 @@ namespace {
     }
 }
 
-void Power::pollShutdownButton(bool pressed, TFT_eSPI &tft, Adafruit_NeoPixel &pixels) {
+bool Power::pollShutdownButton(bool pressed, TFT_eSPI &tft, Adafruit_NeoPixel &pixels) {
     uint32_t now = millis();
+    bool shortClick = false;
 
     if (pressed && !wasPressed) {
         pressStart = now;
@@ -55,9 +55,11 @@ void Power::pollShutdownButton(bool pressed, TFT_eSPI &tft, Adafruit_NeoPixel &p
             lastShownSeconds = secondsLeft;
         }
     } else if (wasPressed) {
-        AccountList::drawFooter(tft, IDLE_HINT, TFT_DARKGREY);
+        shortClick = true;
+        AccountList::drawIdleFooter(tft);
         lastShownSeconds = -1;
     }
 
     wasPressed = pressed;
+    return shortClick;
 }
