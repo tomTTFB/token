@@ -72,12 +72,21 @@ bool WifiManager::syncTime(uint32_t timeoutMs) {
 
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo, timeoutMs)) {
+        Serial.println("NTP sync timed out");
         return false;
     }
 
     time_t now;
     time(&now);
     TimeSync::setUnixTime(now);
+
+    // Logged as UTC so a wrong reading here (vs. a wrong reading only in
+    // the UI) points straight at the NTP response itself, not our display
+    // code.
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    Serial.printf("NTP synced: %s UTC (epoch %ld)\n", buf, (long)now);
+
     return true;
 }
 
