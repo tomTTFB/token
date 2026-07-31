@@ -8,6 +8,10 @@
 
 namespace {
     constexpr uint32_t HOLD_MS = 5000;
+    // Only the final stretch of the hold gets a visible countdown; a hint
+    // that starts blinking the instant you touch the button is more
+    // alarming than useful.
+    constexpr int COUNTDOWN_START_SECONDS = 3;
 
     uint32_t pressStart = 0;
     bool wasPressed = false;
@@ -48,7 +52,7 @@ bool Power::pollShutdownButton(bool pressed, TFT_eSPI &tft, Adafruit_NeoPixel &p
         }
 
         int secondsLeft = (HOLD_MS - elapsed + 999) / 1000; // ceil to whole seconds
-        if (secondsLeft != lastShownSeconds) {
+        if (secondsLeft <= COUNTDOWN_START_SECONDS && secondsLeft != lastShownSeconds) {
             char countdown[24];
             snprintf(countdown, sizeof(countdown), "powering off in %ds", secondsLeft);
             AccountList::drawFooter(tft, countdown, TOKEN_BLUE);
