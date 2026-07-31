@@ -14,6 +14,11 @@ namespace AccountList {
     // True when the trailing Settings row is the current selection.
     bool isSettingsSelected();
 
+    // Redraws just the time/battery widgets in the header, without
+    // touching the rows below -- called periodically so the clock ticks
+    // over and the battery reading updates without a full-list redraw.
+    void refreshHeaderWidgets(TFT_eSPI &tft);
+
     // Redraws just the bottom hint/countdown line, so the power-off hold
     // countdown can update every tick without a full-screen redraw.
     void drawFooter(TFT_eSPI &tft, const String &text, uint16_t color);
