@@ -28,6 +28,10 @@ when it shipped in any particular build.
 - The WiFi icon on the Sync Time screen rendered upside down (0 degrees
   in TFT_eSPI's drawArc is 6 o'clock, not 12), and its arcs swept a full
   semicircle down to the horizontal instead of a narrower fan; both fixed.
+- The WiFi and Bluetooth icons on the Sync Time screen didn't share a
+  vertical center, since the WiFi icon anchors on its dot (near the
+  bottom of its arcs) while Bluetooth anchors on its true center --
+  the WiFi icon's dot now sits low enough that the two line up.
 
 ### Added
 - Rotary encoder scrolling through the account list, with a trailing
@@ -46,3 +50,6 @@ when it shipped in any particular build.
 ### Changed
 - The side button's short-press behavior is now context-dependent: back
   on most screens, backspace on the keyboard screen.
+- The Bluetooth icon's strokes are wider and its vertical stroke now
+  runs a short tail past the top and bottom vertices instead of
+  stopping blunt at them.

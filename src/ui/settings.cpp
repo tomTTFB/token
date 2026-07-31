@@ -75,15 +75,25 @@ namespace {
         // -- so straight up is 180, and 45 degrees either side of that
         // (135/225) gives a narrow upward fan instead of a full dome
         // reaching all the way down to the horizontal (90/270).
-        tft.fillCircle(cx, cy, 3, color);
-        tft.drawArc(cx, cy, 12, 9, 135, 225, color, TFT_BLACK, true);
-        tft.drawArc(cx, cy, 21, 18, 135, 225, color, TFT_BLACK, true);
-        tft.drawArc(cx, cy, 30, 27, 135, 225, color, TFT_BLACK, true);
+        //
+        // The icon's visual mass is the arcs above the dot, so its true
+        // center sits well above the dot itself -- shift the dot down from
+        // the passed-in cy to land the icon's visual center on cy, the
+        // same cy-is-center convention drawBluetoothIcon uses, so the two
+        // icons line up when drawn at the same height.
+        int dotY = cy + 14;
+        tft.fillCircle(cx, dotY, 3, color);
+        tft.drawArc(cx, dotY, 12, 9, 135, 225, color, TFT_BLACK, true);
+        tft.drawArc(cx, dotY, 21, 18, 135, 225, color, TFT_BLACK, true);
+        tft.drawArc(cx, dotY, 30, 27, 135, 225, color, TFT_BLACK, true);
     }
 
     // A simplified version of the Bluetooth rune-bind glyph: a vertical
     // stroke with a bowtie crossing it on the right.
     void drawBluetoothIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+        constexpr float THICKNESS = 2.4f;
+        constexpr int TAIL = 5;
+
         int h = 44, w = 26;
         int top = cy - h / 2;
         int bottom = cy + h / 2;
@@ -95,12 +105,13 @@ namespace {
         // Two triangles sharing the center point on the vertical line --
         // top->upper-right->center forms one, center->lower-right->bottom
         // the other. Crossing upper and lower here draws a star instead
-        // of the bowtie.
-        tft.drawLine(cx, top, cx, bottom, color);
-        tft.drawLine(cx, top, xr, rUpper, color);
-        tft.drawLine(xr, rUpper, cx, mid, color);
-        tft.drawLine(cx, mid, xr, rLower, color);
-        tft.drawLine(xr, rLower, cx, bottom, color);
+        // of the bowtie. The vertical stroke runs a little past the top
+        // and bottom vertices (short tails) rather than stopping blunt.
+        tft.drawWideLine(cx, top - TAIL, cx, bottom + TAIL, THICKNESS, color);
+        tft.drawWideLine(cx, top, xr, rUpper, THICKNESS, color);
+        tft.drawWideLine(xr, rUpper, cx, mid, THICKNESS, color);
+        tft.drawWideLine(cx, mid, xr, rLower, THICKNESS, color);
+        tft.drawWideLine(xr, rLower, cx, bottom, THICKNESS, color);
     }
 
     void drawSyncButton(TFT_eSPI &tft, int i) {
