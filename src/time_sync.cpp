@@ -6,6 +6,7 @@ namespace {
     time_t baseUnixTime = 0;
     uint32_t baseMillis = 0;
     bool synced = false;
+    int offsetMinutes = 0;
 }
 
 void TimeSync::setUnixTime(time_t unixTime) {
@@ -19,6 +20,18 @@ time_t TimeSync::now() {
     return baseUnixTime + (time_t)((millis() - baseMillis) / 1000);
 }
 
+time_t TimeSync::localNow() {
+    return now() + (time_t)offsetMinutes * 60;
+}
+
 bool TimeSync::isSynced() {
     return synced;
+}
+
+void TimeSync::setUtcOffsetMinutes(int minutes) {
+    offsetMinutes = minutes;
+}
+
+int TimeSync::utcOffsetMinutes() {
+    return offsetMinutes;
 }
