@@ -26,5 +26,14 @@ namespace WifiManager {
     // stores the result in TimeSync and returns true.
     bool syncTime(uint32_t timeoutMs = 10000);
 
+    // Non-blocking form of the above, for callers that can't stall the UI
+    // (the boot auto-connect). Start with beginNtp() once connected, then
+    // poll ntpArrived() until it returns true or the caller gives up.
+    void beginNtp();
+
+    // True once a plausible time has actually arrived, at which point it's
+    // been stored in TimeSync. Safe to call repeatedly.
+    bool ntpArrived();
+
     void disconnect();
 }

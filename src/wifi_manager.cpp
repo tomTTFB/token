@@ -7,6 +7,10 @@
 #include "time_sync.h"
 
 namespace {
+    // Any year at or past this means the clock has been set by something
+    // real, not left at the zeroed epoch beginNtp() starts from.
+    constexpr int MIN_PLAUSIBLE_YEAR = 2020;
+
     WifiManager::Network networks[WifiManager::MAX_NETWORKS];
     int count = 0;
 
@@ -68,27 +72,28 @@ bool WifiManager::connect(const String &ssid, const String &password, uint32_t t
     return WiFi.status() == WL_CONNECTED;
 }
 
-bool WifiManager::syncTime(uint32_t timeoutMs) {
+void WifiManager::beginNtp() {
     // The ESP32's RTC-backed system clock survives deep sleep (deliberately
     // -- it's what lets the side button wake the device), so a stale value
-    // from a previous sync can still be sitting there. getLocalTime() only
-    // checks that the year looks plausible, not that a fresh NTP reply
-    // actually arrived, so it'll happily report success against leftover
-    // stale time. Zero the clock first so that check can only pass once a
-    // real reply sets it forward.
+    // from a previous sync can still be sitting there. A plausible-looking
+    // year doesn't prove a fresh NTP reply arrived, so the check in
+    // ntpArrived() would happily pass against leftover stale time. Zero the
+    // clock first so that check can only pass once a real reply sets it
+    // forward.
     struct timeval zero = {0, 0};
     settimeofday(&zero, nullptr);
 
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+}
 
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo, timeoutMs)) {
-        Serial.println("NTP sync timed out");
-        return false;
-    }
-
+bool WifiManager::ntpArrived() {
     time_t now;
     time(&now);
+
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);
+    if (timeinfo.tm_year + 1900 < MIN_PLAUSIBLE_YEAR) return false;
+
     TimeSync::setUnixTime(now);
 
     // Logged as UTC so a wrong reading here (vs. a wrong reading only in
@@ -99,6 +104,19 @@ bool WifiManager::syncTime(uint32_t timeoutMs) {
     Serial.printf("NTP synced: %s UTC (epoch %ld)\n", buf, (long)now);
 
     return true;
+}
+
+bool WifiManager::syncTime(uint32_t timeoutMs) {
+    beginNtp();
+
+    uint32_t start = millis();
+    while (millis() - start < timeoutMs) {
+        if (ntpArrived()) return true;
+        delay(100);
+    }
+
+    Serial.println("NTP sync timed out");
+    return false;
 }
 
 void WifiManager::disconnect() {
