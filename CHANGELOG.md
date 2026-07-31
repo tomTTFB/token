@@ -36,6 +36,11 @@ when it shipped in any particular build.
   which showed up as a visible dark halo around the arcs whenever the
   WiFi button was selected (its actual background is blue-tinted, not
   black). Now passes whatever the button's real background is.
+- The Bluetooth icon left a gray fringe around its strokes regardless of
+  whether its button was selected. It relied on drawWideLine's default
+  behavior of reading the pixel back over SPI to blend against, which
+  isn't reliable on this display; now passes the actual background
+  color explicitly, the same fix as the WiFi icon above.
 
 ### Added
 - Rotary encoder scrolling through the account list, with a trailing

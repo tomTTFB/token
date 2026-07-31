@@ -98,7 +98,7 @@ namespace {
     // the spine itself -- those extending tips are what actually make it
     // read as the Bluetooth logo rather than a plain bowtie converging on
     // the spine's center.
-    void drawBluetoothIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
+    void drawBluetoothIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color, uint16_t bg) {
         constexpr int ICON_W = 36; // spine to each side's vertices
         constexpr int ICON_H = 60;
         constexpr float LINE_W = 4.0f;
@@ -110,11 +110,16 @@ namespace {
         int upperQ = cy - ICON_H / 4;
         int lowerQ = cy + ICON_H / 4;
 
-        tft.drawWideLine(cx, top, cx, bottom, LINE_W, color);          // spine
-        tft.drawWideLine(right, lowerQ, left, upperQ, LINE_W, color);  // crossing diagonal
-        tft.drawWideLine(right, upperQ, left, lowerQ, LINE_W, color);  // crossing diagonal
-        tft.drawWideLine(right, lowerQ, cx, bottom, LINE_W, color);    // right-lower to spine bottom
-        tft.drawWideLine(right, upperQ, cx, top, LINE_W, color);       // right-upper to spine top
+        // Pass bg explicitly rather than relying on drawWideLine's default
+        // (which reads the pixel back over SPI to blend against) -- that
+        // read-back isn't reliable on this hardware, and left a grayish
+        // fringe around the icon regardless of the button's actual
+        // background.
+        tft.drawWideLine(cx, top, cx, bottom, LINE_W, color, bg);          // spine
+        tft.drawWideLine(right, lowerQ, left, upperQ, LINE_W, color, bg);  // crossing diagonal
+        tft.drawWideLine(right, upperQ, left, lowerQ, LINE_W, color, bg);  // crossing diagonal
+        tft.drawWideLine(right, lowerQ, cx, bottom, LINE_W, color, bg);    // right-lower to spine bottom
+        tft.drawWideLine(right, upperQ, cx, top, LINE_W, color, bg);       // right-upper to spine top
     }
 
     void drawSyncButton(TFT_eSPI &tft, int i) {
@@ -134,10 +139,11 @@ namespace {
         int cx = x + btnW / 2;
         int iconCy = SYNC_BTN_TOP + SYNC_BTN_H / 2 - 14;
 
+        uint16_t iconBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
         if (i == 0) {
-            drawWifiIcon(tft, cx, iconCy, accent, sel ? TOKEN_BLUE_DIM : TFT_BLACK);
+            drawWifiIcon(tft, cx, iconCy, accent, iconBg);
         } else {
-            drawBluetoothIcon(tft, cx, iconCy, accent);
+            drawBluetoothIcon(tft, cx, iconCy, accent, iconBg);
         }
 
         tft.setTextDatum(BC_DATUM);
