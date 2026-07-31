@@ -129,7 +129,7 @@ namespace {
 
         char timeStr[6] = "--:--";
         if (TimeSync::isSynced()) {
-            time_t t = TimeSync::now();
+            time_t t = TimeSync::localNow();
             struct tm tmVal;
             gmtime_r(&t, &tmVal);
             snprintf(timeStr, sizeof(timeStr), "%02d:%02d", tmVal.tm_hour, tmVal.tm_min);

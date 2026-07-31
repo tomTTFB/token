@@ -5,15 +5,19 @@
 #include "account_list.h"
 #include "backlight.h"
 #include "colors.h"
+#include "time_sync.h"
 
 namespace {
-    enum class Page { Menu, SyncTime, BluetoothSync, System, About };
+    enum class Page { Menu, SyncTime, BluetoothSync, System, About, TimeZone };
 
-    const char *MENU_ITEMS[] = {"Sync Time", "System", "About"};
-    constexpr int MENU_COUNT = 3;
+    const char *MENU_ITEMS[] = {"Sync Time", "System", "Time Zone", "About"};
+    constexpr int MENU_COUNT = 4;
     constexpr int MENU_TOP = 34;
     constexpr int MENU_ROW_H = 26;
     constexpr uint8_t BRIGHTNESS_STEP = 5;
+    constexpr int TIMEZONE_STEP_MINUTES = 30;
+    constexpr int TIMEZONE_MIN_MINUTES = -12 * 60;
+    constexpr int TIMEZONE_MAX_MINUTES = 14 * 60;
 
     constexpr int SYNC_BTN_TOP = 30;
     constexpr int SYNC_BTN_H = 122;
@@ -158,6 +162,38 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
+    void drawTimeZone(TFT_eSPI &tft) {
+        drawHeader(tft, "Time Zone");
+
+        int offset = TimeSync::utcOffsetMinutes();
+        char offsetStr[8];
+        snprintf(offsetStr, sizeof(offsetStr), "%c%02d:%02d", offset < 0 ? '-' : '+',
+                 abs(offset) / 60, abs(offset) % 60);
+
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("UTC offset", 16, 38, 2);
+
+        tft.setTextDatum(TR_DATUM);
+        tft.setTextColor(TOKEN_BLUE_LIGHT, TFT_BLACK);
+        tft.drawString(offsetStr, tft.width() - 16, 38, 2);
+
+        char localStr[6] = "--:--";
+        if (TimeSync::isSynced()) {
+            time_t t = TimeSync::localNow();
+            struct tm tmVal;
+            gmtime_r(&t, &tmVal);
+            snprintf(localStr, sizeof(localStr), "%02d:%02d", tmVal.tm_hour, tmVal.tm_min);
+        }
+        drawInfoRow(tft, 74, "Local time now", localStr);
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.drawString("scroll to adjust, 30 min steps", tft.width() / 2, tft.height() - 32, 1);
+
+        AccountList::drawIdleFooter(tft);
+    }
+
     void drawAbout(TFT_eSPI &tft) {
         drawHeader(tft, "About");
 
@@ -176,6 +212,7 @@ namespace {
             case Page::SyncTime: drawSyncTime(tft); break;
             case Page::BluetoothSync: drawBluetoothSync(tft); break;
             case Page::System: drawSystem(tft); break;
+            case Page::TimeZone: drawTimeZone(tft); break;
             case Page::About: drawAbout(tft); break;
         }
     }
@@ -210,6 +247,13 @@ void Settings::scroll(TFT_eSPI &tft, int delta) {
             break;
         }
 
+        case Page::TimeZone: {
+            int offset = TimeSync::utcOffsetMinutes() + delta * TIMEZONE_STEP_MINUTES;
+            TimeSync::setUtcOffsetMinutes(constrain(offset, TIMEZONE_MIN_MINUTES, TIMEZONE_MAX_MINUTES));
+            drawCurrentPage(tft);
+            break;
+        }
+
         case Page::BluetoothSync:
         case Page::About:
             break; // read-only pages
@@ -221,7 +265,8 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
         switch (menuSelected) {
             case 0: page = Page::SyncTime; break;
             case 1: page = Page::System; break;
-            case 2: page = Page::About; break;
+            case 2: page = Page::TimeZone; break;
+            case 3: page = Page::About; break;
         }
         drawCurrentPage(tft);
         return Action::None;
