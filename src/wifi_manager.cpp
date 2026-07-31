@@ -121,4 +121,10 @@ bool WifiManager::syncTime(uint32_t timeoutMs) {
 
 void WifiManager::disconnect() {
     WiFi.disconnect(true);
+    // Powering the radio down rather than just dropping the association --
+    // otherwise a failed WiFi.begin() keeps retrying in the background for
+    // the rest of the session, and the station stays up burning battery
+    // long after the sync it was needed for. scan()/connect() both set the
+    // mode back to WIFI_STA, so bringing it up again costs nothing.
+    WiFi.mode(WIFI_OFF);
 }

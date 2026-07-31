@@ -34,6 +34,9 @@ void SyncStatus::run(TFT_eSPI &tft, const String &ssid, const String &password) 
 
     if (!WifiManager::connect(ssid, password)) {
         drawStatus(tft, ssid.c_str(), "Connection failed", "back: return", TFT_RED);
+        // WiFi.begin() keeps retrying on its own after the timeout above,
+        // so this path has to tear the radio down like the others do.
+        WifiManager::disconnect();
         return;
     }
 
