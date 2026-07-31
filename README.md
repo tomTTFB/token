@@ -9,10 +9,15 @@ Currently implemented:
 
 - Boot animation — a Token-blue digital rain effect with an ASCII key logo
   and wordmark layered on top
-- A placeholder account list screen (static entries, `000000` fake codes)
+- An account list screen (static entries, `000000` fake codes) navigable with
+  the rotary encoder, windowed to the visible rows with scroll indicators
+- A Settings screen reached by scrolling past the last account and pressing
+  the encoder: Sync Time (placeholder until WiFi is implemented), System
+  (live backlight brightness over PWM, free heap, uptime), and About
+  (firmware build time, chip model, flash size)
 - Hold-to-shutdown — holding the physical side button for 5 seconds shows a
   countdown, then powers the device down; pressing the same button wakes it
-  back up
+  back up. A short press instead acts as "back" out of a settings screen.
 
 Pin mappings are sourced from LilyGO's official
 [Xinyuan-LilyGO/T-Embed-CC1101](https://github.com/Xinyuan-LilyGO/T-Embed-CC1101)
@@ -42,3 +47,8 @@ folder open — `platformio.ini` already selects the `T_Embed_CC1101` environmen
 - `BOARD_USER_KEY` (GPIO6) is the physical side button used for the
   hold-to-shutdown gesture — separate from `ENCODER_KEY` (GPIO0), the rotary
   encoder's push button.
+- The rotary encoder's quadrature channels (`ENCODER_INA`/`ENCODER_INB`, GPIO4/5)
+  are decoded with the `RotaryEncoder` library; `ENCODER_KEY` is read directly
+  and debounced in `main.cpp`.
+- Backlight brightness is driven over LEDC PWM on `TFT_BL` (GPIO21), since
+  TFT_eSPI only ever drives that pin high on init.
