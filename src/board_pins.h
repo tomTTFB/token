@@ -12,5 +12,8 @@
 
 #define TFT_BACKLIGHT_PWM_CHANNEL 0 // LEDC channel driving TFT_BL (GPIO21)
 
+#define BOARD_I2C_SDA   8    // Shared with the BQ25896 charger/fuel-gauge bus
+#define BOARD_I2C_SCL   18
+
 #define WS2812_DATA_PIN 14
 #define WS2812_NUM_LEDS 8
