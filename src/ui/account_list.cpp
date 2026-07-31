@@ -43,6 +43,11 @@ namespace {
     void drawAccountRow(TFT_eSPI &tft, int y, const Account &account, bool sel) {
         uint16_t rowBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
 
+        // Always clear the row's own rectangle first -- redrawing a single
+        // row in place (instead of the whole screen) means a row going
+        // from selected to unselected has to erase its own highlight
+        // outline, since nothing else is about to paint over it.
+        tft.fillRect(4, y, tft.width() - 8, ROW_H - 4, TFT_BLACK);
         if (sel) {
             tft.fillRoundRect(4, y, tft.width() - 8, ROW_H - 4, 6, TOKEN_BLUE_DIM);
             tft.drawRoundRect(4, y, tft.width() - 8, ROW_H - 4, 6, TOKEN_BLUE);
@@ -63,6 +68,7 @@ namespace {
     void drawSettingsRow(TFT_eSPI &tft, int y, bool sel) {
         uint16_t rowBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
 
+        tft.fillRect(4, y, tft.width() - 8, ROW_H - 4, TFT_BLACK);
         if (sel) {
             tft.fillRoundRect(4, y, tft.width() - 8, ROW_H - 4, 6, TOKEN_BLUE_DIM);
             tft.drawRoundRect(4, y, tft.width() - 8, ROW_H - 4, 6, TOKEN_BLUE);
@@ -74,6 +80,34 @@ namespace {
 
         tft.setTextColor(TFT_DARKGREY, rowBg);
         tft.drawString("sync time, system, about", 16, y + 20, 1);
+    }
+
+    void drawRowByIndex(TFT_eSPI &tft, int row, int y, bool sel) {
+        if (row == SETTINGS_ROW) {
+            drawSettingsRow(tft, y, sel);
+        } else {
+            drawAccountRow(tft, y, ACCOUNTS[row], sel);
+        }
+    }
+
+    // Redraws every row currently in the visible window. Used when the
+    // window itself shifts (scrolling past its top/bottom edge) -- every
+    // visible row changes, but the header/footer don't, so this alone is
+    // enough without a full-screen clear.
+    void drawRows(TFT_eSPI &tft) {
+        for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
+            int row = scrollOffset + slot;
+            if (row >= ROW_COUNT) break;
+            drawRowByIndex(tft, row, TOP + slot * ROW_H, row == selected);
+        }
+    }
+
+    // Redraws a single row in place, if it's currently within the visible
+    // window (a no-op otherwise -- nothing on screen to touch).
+    void redrawRowAt(TFT_eSPI &tft, int row) {
+        int slot = row - scrollOffset;
+        if (slot < 0 || slot >= VISIBLE_ROWS) return;
+        drawRowByIndex(tft, row, TOP + slot * ROW_H, row == selected);
     }
 
     // Small chevrons in the header/footer margin hinting that the list
@@ -152,27 +186,29 @@ void AccountList::draw(TFT_eSPI &tft) {
     drawHeaderWidgets(tft);
     tft.drawFastHLine(0, 26, tft.width(), TOKEN_BLUE);
 
-    for (int slot = 0; slot < VISIBLE_ROWS; slot++) {
-        int row = scrollOffset + slot;
-        if (row >= ROW_COUNT) break;
-
-        int y = TOP + slot * ROW_H;
-        bool sel = row == selected;
-
-        if (row == SETTINGS_ROW) {
-            drawSettingsRow(tft, y, sel);
-        } else {
-            drawAccountRow(tft, y, ACCOUNTS[row], sel);
-        }
-    }
-
+    drawRows(tft);
     drawScrollHints(tft);
     drawIdleFooter(tft);
 }
 
 void AccountList::scroll(TFT_eSPI &tft, int delta) {
+    int oldSelected = selected;
     selected = ((selected + delta) % ROW_COUNT + ROW_COUNT) % ROW_COUNT;
-    draw(tft);
+
+    int oldScrollOffset = scrollOffset;
+    clampScrollOffset();
+
+    if (scrollOffset != oldScrollOffset) {
+        // The window shifted -- every visible row changed, but the
+        // header/footer/title didn't, so just repaint the rows and the
+        // scroll chevrons rather than the whole screen.
+        drawRows(tft);
+        drawScrollHints(tft);
+        return;
+    }
+
+    redrawRowAt(tft, oldSelected);
+    redrawRowAt(tft, selected);
 }
 
 bool AccountList::isSettingsSelected() {
