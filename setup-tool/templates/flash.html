@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Flash Firmware - Token Setup{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Flash Firmware</h1>
+
+{% if missing_firmware %}
+<div class="alert alert-warning">
+    <strong>No firmware build found.</strong> Run <code>pio run</code> in the project root first &mdash;
+    missing: {{ missing_firmware | join(", ") }}. This page reads straight out of
+    <code>.pio/build/T_Embed_CC1101/</code>, so a fresh build is picked up automatically the next time you load it.
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5 card-title">Before you flash</h2>
+        <ol class="mb-0">
+            <li>Connect Token to this computer with a USB-C cable.</li>
+            <li>Click "Connect" below and pick Token's serial port from the browser's device picker.</li>
+            <li>If the connection fails or gets stuck, put the board in download mode manually: hold the rotary
+                encoder's push button (GPIO0, the chip's BOOT strap pin) while plugging in the cable, then try again.</li>
+        </ol>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body text-center py-5">
+        <esp-web-install-button manifest="/manifest.json">
+            <button slot="activate" class="btn btn-token btn-lg" {% if missing_firmware %}disabled{% endif %}>
+                Connect and Flash Token
+            </button>
+            <span slot="unsupported" class="text-warning">
+                Your browser doesn't support Web Serial. Use a recent Chrome, Edge, or Opera on desktop.
+            </span>
+            <span slot="not-allowed" class="text-warning">
+                Web Serial is blocked here &mdash; this page must be served over <code>http://localhost</code> or HTTPS.
+            </span>
+        </esp-web-install-button>
+    </div>
+</div>
+
+<p class="text-secondary small mt-3">
+    Flashing erases and rewrites the bootloader, partition table, and application &mdash; account data lives in a
+    separate NVS partition that this doesn't touch, so existing accounts and the PIN survive a reflash.
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10/dist/web/install-button.js"></script>
+{% endblock %}

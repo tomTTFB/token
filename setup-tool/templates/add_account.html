@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Add Account - Token Setup{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Add Account</h1>
+
+<div class="alert alert-info">
+    On Token, go to <strong>Settings &rarr; Add Account</strong> first. The device only accepts an incoming
+    account while that screen is open and listening.
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <label for="port-select" class="form-label">Serial port</label>
+        <div class="d-flex gap-2">
+            <select id="port-select" class="form-select">
+                {% for port in ports %}
+                <option value="{{ port.device }}" {% if port.likely_token %}selected{% endif %}>
+                    {{ port.device }}{% if port.likely_token %} (likely Token){% endif %}
+                </option>
+                {% else %}
+                <option value="" disabled selected>No serial ports detected</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-outline-secondary" type="button" onclick="refreshPorts()">Refresh</button>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#qr-pane" type="button">Scan QR Code</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#manual-pane" type="button">Manual Entry</button>
+    </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-4 mb-4">
+    <div class="tab-pane fade show active" id="qr-pane">
+        <label for="qr-file" class="form-label">QR code image</label>
+        <input class="form-control" type="file" id="qr-file" accept="image/*">
+        <button class="btn btn-outline-primary mt-3" onclick="parseQr()">Parse QR Code</button>
+        <div id="qr-error" class="text-danger small mt-2"></div>
+    </div>
+
+    <div class="tab-pane fade" id="manual-pane">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label for="manual-name" class="form-label">Account name</label>
+                <input class="form-control" id="manual-name" placeholder="e.g. user@example.com">
+            </div>
+            <div class="col-md-6">
+                <label for="manual-issuer" class="form-label">Issuer</label>
+                <input class="form-control" id="manual-issuer" placeholder="e.g. GitHub">
+            </div>
+            <div class="col-12">
+                <label for="manual-secret" class="form-label">Secret (base32)</label>
+                <input class="form-control font-monospace" id="manual-secret" placeholder="e.g. JBSWY3DPEHPK3PXP">
+            </div>
+        </div>
+        <button class="btn btn-outline-primary mt-3" onclick="useManualEntry()">Review</button>
+    </div>
+</div>
+
+<div class="card mb-4 d-none" id="preview-card">
+    <div class="card-body">
+        <h2 class="h5 card-title">Review</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Name</dt><dd class="col-sm-9" id="preview-name"></dd>
+            <dt class="col-sm-3">Issuer</dt><dd class="col-sm-9" id="preview-issuer"></dd>
+            <dt class="col-sm-3">Secret</dt><dd class="col-sm-9 font-monospace" id="preview-secret"></dd>
+        </dl>
+        <div id="preview-defaults-warning" class="alert alert-warning d-none mt-3 mb-3"></div>
+        <p class="text-secondary small">
+            Digits and period aren't sent &mdash; Token always uses its own defaults (6 digits, 30s) for
+            accounts added this way.
+        </p>
+        <button class="btn btn-token" onclick="sendAccount()">Add to Token</button>
+    </div>
+</div>
+
+<div id="send-result"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pending = null;
+
+async function refreshPorts() {
+    const res = await fetch('/api/ports');
+    const ports = await res.json();
+    const select = document.getElementById('port-select');
+    select.innerHTML = '';
+    if (ports.length === 0) {
+        select.innerHTML = '<option value="" disabled selected>No serial ports detected</option>';
+        return;
+    }
+    for (const port of ports) {
+        const opt = document.createElement('option');
+        opt.value = port.device;
+        opt.textContent = port.device + (port.likely_token ? ' (likely Token)' : '');
+        if (port.likely_token) opt.selected = true;
+        select.appendChild(opt);
+    }
+}
+
+function showPreview(account) {
+    pending = account;
+    document.getElementById('preview-name').textContent = account.name;
+    document.getElementById('preview-issuer').textContent = account.issuer || '(none)';
+    document.getElementById('preview-secret').textContent = account.secret;
+
+    const warning = document.getElementById('preview-defaults-warning');
+    if (account.matches_device_defaults === false) {
+        warning.textContent = `This account was set up for ${account.digits} digits / ${account.period}s / `
+            + `${account.algorithm}, but Token will generate 6-digit / 30s / SHA1 codes for it instead. `
+            + `Codes won't match if the service requires the scanned settings.`;
+        warning.classList.remove('d-none');
+    } else {
+        warning.classList.add('d-none');
+    }
+
+    document.getElementById('preview-card').classList.remove('d-none');
+    document.getElementById('send-result').innerHTML = '';
+}
+
+async function parseQr() {
+    const fileInput = document.getElementById('qr-file');
+    const errorBox = document.getElementById('qr-error');
+    errorBox.textContent = '';
+
+    if (!fileInput.files.length) {
+        errorBox.textContent = 'Choose an image first.';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('image', fileInput.files[0]);
+
+    const res = await fetch('/api/parse-qr', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!data.ok) {
+        errorBox.textContent = data.error;
+        return;
+    }
+    showPreview(data.account);
+}
+
+function useManualEntry() {
+    const name = document.getElementById('manual-name').value.trim();
+    const issuer = document.getElementById('manual-issuer').value.trim();
+    const secret = document.getElementById('manual-secret').value.trim().toUpperCase();
+    if (!name || !secret) {
+        alert('Name and secret are required.');
+        return;
+    }
+    showPreview({ name, issuer, secret, matches_device_defaults: true });
+}
+
+async function sendAccount() {
+    const port = document.getElementById('port-select').value;
+    const resultBox = document.getElementById('send-result');
+    if (!port) {
+        resultBox.innerHTML = '<div class="alert alert-danger">No serial port selected.</div>';
+        return;
+    }
+
+    resultBox.innerHTML = '<div class="text-secondary">Sending&hellip;</div>';
+    const res = await fetch('/api/add-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port, name: pending.name, issuer: pending.issuer, secret: pending.secret }),
+    });
+    const data = await res.json();
+    resultBox.innerHTML = data.ok
+        ? `<div class="alert alert-success">${data.message}</div>`
+        : `<div class="alert alert-danger">${data.message}</div>`;
+}
+</script>
+{% endblock %}

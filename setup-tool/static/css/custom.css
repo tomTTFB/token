@@ -1,0 +1,34 @@
+:root {
+    --token-blue: #3b82f6;
+}
+
+.text-token-blue { color: var(--token-blue); }
+
+.btn-token {
+    background-color: var(--token-blue);
+    border-color: var(--token-blue);
+    color: #fff;
+}
+.btn-token:hover, .btn-token:focus {
+    background-color: #2f6bd6;
+    border-color: #2f6bd6;
+    color: #fff;
+}
+
+.navbar-nav .nav-link.active {
+    color: var(--token-blue) !important;
+    font-weight: 600;
+}
+
+.card {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+code, .font-monospace {
+    letter-spacing: 0.02em;
+}
+
+esp-web-install-button {
+    --esp-tools-button-color: #ffffff;
+    --esp-tools-button-background-color: var(--token-blue);
+}

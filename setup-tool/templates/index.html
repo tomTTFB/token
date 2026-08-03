@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Token Setup{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Token Setup</h1>
+
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">Serial ports</h2>
+                <p class="text-secondary small">Token enumerates as a native USB device. Ports marked
+                    <span class="badge text-bg-primary">likely Token</span> match Espressif's USB vendor ID.</p>
+                <ul class="list-group list-group-flush" id="port-list">
+                    {% for port in ports %}
+                    <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
+                        <span class="font-monospace">{{ port.device }}</span>
+                        {% if port.likely_token %}
+                        <span class="badge text-bg-primary">likely Token</span>
+                        {% else %}
+                        <span class="text-secondary small">{{ port.description }}</span>
+                        {% endif %}
+                    </li>
+                    {% else %}
+                    <li class="list-group-item bg-transparent text-secondary">No serial ports detected. Plug in Token over USB-C.</li>
+                    {% endfor %}
+                </ul>
+                <button class="btn btn-outline-secondary btn-sm mt-3" onclick="refreshPorts()">Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title">What you can do here</h2>
+                <ul>
+                    <li><a href="/flash">Flash firmware</a> to a connected Token over USB, straight from the browser.</li>
+                    <li><a href="/accounts/add">Add a 2FA account</a> by scanning a QR code or entering a secret manually.</li>
+                </ul>
+                <p class="text-secondary small mb-0">
+                    Listing, deleting, changing the PIN, and wiping accounts are all done on
+                    the device itself (Settings menu) &mdash; the firmware doesn't expose those
+                    over serial yet, so this tool can't drive them remotely.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if missing_firmware %}
+<div class="alert alert-warning mt-4">
+    <strong>No firmware build found.</strong> Run <code>pio run</code> in the project root before using the
+    <a href="/flash">Flash</a> page &mdash; missing: {{ missing_firmware | join(", ") }}.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshPorts() {
+    const res = await fetch('/api/ports');
+    const ports = await res.json();
+    const list = document.getElementById('port-list');
+    list.innerHTML = '';
+    if (ports.length === 0) {
+        list.innerHTML = '<li class="list-group-item bg-transparent text-secondary">No serial ports detected. Plug in Token over USB-C.</li>';
+        return;
+    }
+    for (const port of ports) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item bg-transparent d-flex justify-content-between align-items-center';
+        li.innerHTML = port.likely_token
+            ? `<span class="font-monospace">${port.device}</span><span class="badge text-bg-primary">likely Token</span>`
+            : `<span class="font-monospace">${port.device}</span><span class="text-secondary small">${port.description}</span>`;
+        list.appendChild(li);
+    }
+}
+</script>
+{% endblock %}

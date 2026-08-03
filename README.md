@@ -44,6 +44,12 @@ pio device monitor      # serial monitor (115200 baud)
 Or use the PlatformIO VS Code extension's Build/Upload/Monitor buttons with this
 folder open — `platformio.ini` already selects the `T_Embed_CC1101` environment.
 
+### Web setup tool
+
+[`setup-tool/`](setup-tool/) is a local Flask + Bootstrap app that flashes a
+`pio run` build to the device straight from the browser (via Web Serial) and
+adds 2FA accounts over USB — see [`setup-tool/README.md`](setup-tool/README.md).
+
 ## Notes
 
 - `boards/T_Embed_CC1101.json` declares the board's 16MB flash / 8MB PSRAM (QIO

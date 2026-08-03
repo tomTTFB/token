@@ -1,0 +1,4 @@
+flask>=3.0
+pyserial>=3.5
+pillow>=10.0
+pyzbar>=0.1.9
