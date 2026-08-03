@@ -13,6 +13,7 @@
 namespace {
     constexpr uint16_t CTS_SERVICE_UUID = 0x1805;
     constexpr uint16_t CTS_CURRENT_TIME_CHAR_UUID = 0x2A2B;
+    constexpr uint16_t CTS_LOCAL_TIME_CHAR_UUID = 0x2A0F;
     constexpr uint32_t BOND_TIMEOUT_MS = 15000; // covers Bonding + Reading
 
     NimBLEServer *server = nullptr;
@@ -33,6 +34,14 @@ namespace {
     uint16_t ctsStartHandle = 0;
     uint16_t ctsEndHandle = 0;
     uint16_t ctsValHandle = 0;
+    uint16_t ctsLocalTimeValHandle = 0; // 0 if the phone doesn't expose it
+
+    // The phone's reported wall-clock time, held between the Current Time
+    // read and the (possibly separate) Local Time Information read so both
+    // can be combined once the offset is known.
+    struct tm pendingLocalTm = {};
+
+    BleTimeSync::OffsetSource offsetSourceUsed = BleTimeSync::OffsetSource::Unknown;
 
     void setState(BleTimeSync::State s) {
         currentState = s;
@@ -66,7 +75,53 @@ namespace {
         return (time_t)(days * 86400LL + t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec);
     }
 
-    int readCb(uint16_t, const ble_gatt_error *error, ble_gatt_attr *attr, void *) {
+    // Combines the local time already parsed into pendingLocalTm with an
+    // offset and publishes the result -- the shared tail end of both the
+    // detected-offset and manual-offset paths below.
+    void applyLocalTime(int offsetMinutes, BleTimeSync::OffsetSource source) {
+        pendingUnixTime = tmToEpochUtc(pendingLocalTm) - (time_t)offsetMinutes * 60;
+        offsetSourceUsed = source;
+        timeApplied = false;
+        Serial.printf("BLE: phone reported local time %04d-%02d-%02d %02d:%02d:%02d, using %s offset %+d min\n",
+                      pendingLocalTm.tm_year + 1900, pendingLocalTm.tm_mon + 1, pendingLocalTm.tm_mday,
+                      pendingLocalTm.tm_hour, pendingLocalTm.tm_min, pendingLocalTm.tm_sec,
+                      source == BleTimeSync::OffsetSource::Detected ? "detected" : "manual", offsetMinutes);
+        setState(BleTimeSync::State::Success);
+    }
+
+    void applyManualOffset() {
+        applyLocalTime(TimeSync::utcOffsetMinutes(), BleTimeSync::OffsetSource::Manual);
+    }
+
+    // CTS Local Time Information (0x2A0F): sint8 time zone in 15-minute
+    // units (-48..56, 0x80 = "not known"), followed by a uint8 DST offset
+    // enum whose values (0, 2, 4, 8) happen to equal that same field's
+    // added minutes / 15 (0, 30, 60, 120 -- i.e. 0/0.5/1/2 hours; 0xFF =
+    // "not known"). Optional -- not every phone exposes it, which is why
+    // this is only ever attempted as a improvement over the manual
+    // Settings > Time Zone offset, never a hard requirement.
+    int readLocalTimeCb(uint16_t, const ble_gatt_error *error, ble_gatt_attr *attr, void *) {
+        uint8_t buf[2];
+        uint16_t len = sizeof(buf);
+        bool gotValue = error->status == 0 && attr && attr->om && OS_MBUF_PKTLEN(attr->om) >= 2 &&
+                        ble_hs_mbuf_to_flat(attr->om, buf, len, &len) == 0 && len >= 2;
+
+        int8_t tz = gotValue ? (int8_t)buf[0] : (int8_t)0x80;
+        uint8_t dst = gotValue ? buf[1] : 0xFF;
+
+        if (!gotValue || tz == (int8_t)0x80) {
+            Serial.println("BLE: phone's local time zone not known, falling back to Settings > Time Zone");
+            applyManualOffset();
+            return 0;
+        }
+
+        int offsetMinutes = (int)tz * 15;
+        if (dst != 0xFF) offsetMinutes += (int)dst * 15;
+        applyLocalTime(offsetMinutes, BleTimeSync::OffsetSource::Detected);
+        return 0;
+    }
+
+    int readCb(uint16_t connHandleArg, const ble_gatt_error *error, ble_gatt_attr *attr, void *) {
         if (error->status != 0 || !attr || !attr->om) {
             Serial.printf("BLE: CTS read failed, status=%d\n", error->status);
             setState(BleTimeSync::State::Failed);
@@ -84,29 +139,38 @@ namespace {
             return 0;
         }
 
-        struct tm tmVal = {};
-        tmVal.tm_year = (buf[0] | (buf[1] << 8)) - 1900;
-        tmVal.tm_mon = buf[2] - 1;
-        tmVal.tm_mday = buf[3];
-        tmVal.tm_hour = buf[4];
-        tmVal.tm_min = buf[5];
-        tmVal.tm_sec = buf[6];
+        pendingLocalTm = {};
+        pendingLocalTm.tm_year = (buf[0] | (buf[1] << 8)) - 1900;
+        pendingLocalTm.tm_mon = buf[2] - 1;
+        pendingLocalTm.tm_mday = buf[3];
+        pendingLocalTm.tm_hour = buf[4];
+        pendingLocalTm.tm_min = buf[5];
+        pendingLocalTm.tm_sec = buf[6];
 
-        // CTS reports the phone's local wall-clock time, not UTC, and its
-        // UTC-offset characteristic isn't reliably implemented across
-        // platforms -- so back into UTC using the offset the user already
-        // set in Settings > Time Zone instead.
-        pendingUnixTime = tmToEpochUtc(tmVal) - (time_t)TimeSync::utcOffsetMinutes() * 60;
-        timeApplied = false;
-        Serial.printf("BLE: phone reported local time %04d-%02d-%02d %02d:%02d:%02d\n", tmVal.tm_year + 1900,
-                      tmVal.tm_mon + 1, tmVal.tm_mday, tmVal.tm_hour, tmVal.tm_min, tmVal.tm_sec);
-        setState(BleTimeSync::State::Success);
+        // CTS reports the phone's local wall-clock time, not UTC. If the
+        // phone also exposes Local Time Information, use its own reported
+        // offset instead of the one guessed in Settings > Time Zone --
+        // that guess is only a fallback for phones that don't.
+        if (ctsLocalTimeValHandle != 0) {
+            int rc = ble_gattc_read(connHandleArg, ctsLocalTimeValHandle, readLocalTimeCb, nullptr);
+            if (rc != 0) {
+                Serial.printf("BLE: failed to start local time zone read, rc=%d\n", rc);
+                applyManualOffset();
+            }
+            return 0;
+        }
+
+        applyManualOffset();
         return 0;
     }
 
     int chrDiscCb(uint16_t ch, const ble_gatt_error *error, const ble_gatt_chr *chr, void *) {
         if (error->status == 0) {
-            if (chr) ctsValHandle = chr->val_handle;
+            if (chr) {
+                uint16_t uuid16Val = ble_uuid_u16(&chr->uuid.u);
+                if (uuid16Val == CTS_CURRENT_TIME_CHAR_UUID) ctsValHandle = chr->val_handle;
+                else if (uuid16Val == CTS_LOCAL_TIME_CHAR_UUID) ctsLocalTimeValHandle = chr->val_handle;
+            }
             return 0;
         }
         if (error->status == BLE_HS_EDONE) {
@@ -144,9 +208,10 @@ namespace {
                 setState(BleTimeSync::State::Failed);
                 return 0;
             }
-            ble_uuid16_t charUuid;
-            int rc = ble_gattc_disc_chrs_by_uuid(ch, ctsStartHandle, ctsEndHandle,
-                                                 uuid16(CTS_CURRENT_TIME_CHAR_UUID, charUuid), chrDiscCb, nullptr);
+            // Discovers every characteristic in the service (rather than
+            // by-UUID) so a single round trip picks up both Current Time
+            // and, if present, Local Time Information.
+            int rc = ble_gattc_disc_all_chrs(ch, ctsStartHandle, ctsEndHandle, chrDiscCb, nullptr);
             if (rc != 0) {
                 Serial.printf("BLE: failed to start characteristic discovery, rc=%d\n", rc);
                 setState(BleTimeSync::State::Failed);
@@ -188,7 +253,7 @@ namespace {
                 return;
             }
 
-            ctsStartHandle = ctsEndHandle = ctsValHandle = 0;
+            ctsStartHandle = ctsEndHandle = ctsValHandle = ctsLocalTimeValHandle = 0;
             setState(BleTimeSync::State::Reading);
             ble_uuid16_t svcUuid;
             int rc = ble_gattc_disc_svc_by_uuid(desc->conn_handle, uuid16(CTS_SERVICE_UUID, svcUuid), svcDiscCb,
@@ -251,7 +316,8 @@ namespace {
 void BleTimeSync::begin() {
     connHandle = BLE_HS_CONN_HANDLE_NONE;
     timeApplied = true;
-    ctsStartHandle = ctsEndHandle = ctsValHandle = 0;
+    ctsStartHandle = ctsEndHandle = ctsValHandle = ctsLocalTimeValHandle = 0;
+    offsetSourceUsed = OffsetSource::Unknown;
 
     NimBLEDevice::init("Token");
     radioUp = true; // from here on the stack needs deinit(), even if setup below fails
@@ -319,6 +385,10 @@ void BleTimeSync::poll() {
 
 BleTimeSync::State BleTimeSync::state() {
     return currentState;
+}
+
+BleTimeSync::OffsetSource BleTimeSync::lastOffsetSource() {
+    return offsetSourceUsed;
 }
 
 void BleTimeSync::stop() {

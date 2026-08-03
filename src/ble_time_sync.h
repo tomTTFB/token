@@ -19,6 +19,15 @@
 namespace BleTimeSync {
     enum class State { Idle, Advertising, Bonding, Reading, Success, Failed };
 
+    // Which offset the most recent successful sync actually used to
+    // convert the phone's reported local time to UTC. Detected means the
+    // phone exposed CTS's optional Local Time Information characteristic
+    // (0x2A0F) and it had a known time zone; Manual means it fell back to
+    // Settings > Time Zone, either because the phone didn't expose that
+    // characteristic or reported its zone as unknown. Meaningless before
+    // the first Success.
+    enum class OffsetSource { Unknown, Manual, Detected };
+
     // Initializes the BLE stack and starts advertising as "Token" with
     // bonding required. Safe to call again (e.g. to retry after Failed);
     // stop() should be called first if a previous attempt is still live.
@@ -31,6 +40,9 @@ namespace BleTimeSync {
     void poll();
 
     State state();
+
+    // See OffsetSource above.
+    OffsetSource lastOffsetSource();
 
     // Disconnects and frees the NimBLE stack. Call this whenever the
     // Bluetooth Sync screen is left, success or not. Bonds are left intact
