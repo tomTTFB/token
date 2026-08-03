@@ -2,20 +2,27 @@
 
 #include <Arduino.h>
 
+#include "account_link.h"
 #include "account_list.h"
+#include "account_store.h"
 #include "backlight.h"
 #include "ble_time_sync.h"
 #include "colors.h"
+#include "pin_entry.h"
+#include "pin_store.h"
 #include "time_sync.h"
 #include "wifi_auto.h"
 
 namespace {
-    enum class Page { Menu, SyncTime, BluetoothSync, System, About, TimeZone };
+    enum class Page { Menu, SyncTime, BluetoothSync, AddAccount, ChangePin, Typing, System, TimeZone, WipeConfirm,
+                       About };
 
-    const char *MENU_ITEMS[] = {"Sync Time", "System", "Time Zone", "About"};
-    constexpr int MENU_COUNT = 4;
+    const char *MENU_ITEMS[] = {"Sync Time", "Add Account", "Change PIN", "Typing", "System", "Time Zone",
+                                 "Wipe Device", "About"};
+    constexpr int MENU_COUNT = 8;
     constexpr int MENU_TOP = 34;
     constexpr int MENU_ROW_H = 26;
+    constexpr int MENU_VISIBLE_ROWS = 4;
     constexpr uint8_t BRIGHTNESS_STEP = 5;
     constexpr int TIMEZONE_STEP_MINUTES = 30;
     constexpr int TIMEZONE_MIN_MINUTES = -12 * 60;
@@ -28,7 +35,13 @@ namespace {
 
     Page page = Page::Menu;
     int menuSelected = 0;
+    int menuScrollOffset = 0;
     int syncMenuSelected = 0; // 0 = WiFi, 1 = Bluetooth
+
+    // Whether a click-to-type on the account list sends Enter after the
+    // code. Off by default -- typing a code into the wrong field shouldn't
+    // also submit it.
+    bool enterAfterCode = false;
 
     // What drawBleSyncBody() last actually painted -- compared against the
     // live BleTimeSync state on every poll(). Comparing against the
@@ -37,6 +50,19 @@ namespace {
     // bond -> discover -> read chain can finish in well under one loop()
     // tick), leaving the screen stuck on a stale status forever.
     BleTimeSync::State lastDrawnBleState = BleTimeSync::State::Idle;
+
+    // Same idea as lastDrawnBleState, but for the Add Account page --
+    // compared against AccountLink's live state on every poll() so the
+    // Listening -> Success/Failed transition (which can complete between
+    // two poll() calls) always gets picked up.
+    AccountLink::State lastDrawnLinkState = AccountLink::State::Idle;
+
+    // Whether Change PIN's verify-old-PIN step has already succeeded --
+    // distinguishes what an Unlocked/PinSet result from PinEntry::press()
+    // means, since Change PIN drives PinEntry through two back-to-back
+    // sub-flows (enterVerify then enterSetNew) that share the same Action
+    // values.
+    bool changePinVerified = false;
 
     void drawHeader(TFT_eSPI &tft, const char *title) {
         tft.fillScreen(TFT_BLACK);
@@ -56,9 +82,18 @@ namespace {
         tft.drawString(value, tft.width() - 16, y, 1);
     }
 
-    void drawMenuRow(TFT_eSPI &tft, int i) {
-        int y = MENU_TOP + i * MENU_ROW_H;
-        bool sel = i == menuSelected;
+    void clampMenuScrollOffset() {
+        if (menuSelected < menuScrollOffset) menuScrollOffset = menuSelected;
+        if (menuSelected > menuScrollOffset + MENU_VISIBLE_ROWS - 1) {
+            menuScrollOffset = menuSelected - MENU_VISIBLE_ROWS + 1;
+        }
+    }
+
+    // row is the item's index into MENU_ITEMS; slot is its position within
+    // the visible window, which is what actually determines its y.
+    void drawMenuRow(TFT_eSPI &tft, int row, int slot) {
+        int y = MENU_TOP + slot * MENU_ROW_H;
+        bool sel = row == menuSelected;
         uint16_t rowBg = sel ? TOKEN_BLUE_DIM : TFT_BLACK;
 
         // Clear the row's own rectangle first so an unselected row erases
@@ -71,12 +106,44 @@ namespace {
 
         tft.setTextDatum(TL_DATUM);
         tft.setTextColor(sel ? TOKEN_BLUE : TFT_WHITE, rowBg);
-        tft.drawString(MENU_ITEMS[i], 16, y + 5, 2);
+        tft.drawString(MENU_ITEMS[row], 16, y + 5, 2);
+    }
+
+    // Redraws every row currently in the visible window -- used when the
+    // window itself shifts, since every visible row's content changes.
+    void drawMenuRows(TFT_eSPI &tft) {
+        for (int slot = 0; slot < MENU_VISIBLE_ROWS; slot++) {
+            int row = menuScrollOffset + slot;
+            if (row >= MENU_COUNT) break;
+            drawMenuRow(tft, row, slot);
+        }
+    }
+
+    // Redraws a single row in place, if it's currently within the visible
+    // window (a no-op otherwise -- nothing on screen to touch).
+    void redrawMenuRowAt(TFT_eSPI &tft, int row) {
+        int slot = row - menuScrollOffset;
+        if (slot < 0 || slot >= MENU_VISIBLE_ROWS) return;
+        drawMenuRow(tft, row, slot);
+    }
+
+    // Small chevrons hinting the menu continues past the visible window,
+    // same convention as AccountList::drawScrollHints.
+    void drawMenuScrollHints(TFT_eSPI &tft) {
+        tft.setTextDatum(TR_DATUM);
+        tft.setTextColor(menuScrollOffset > 0 ? TOKEN_BLUE : TFT_BLACK, TFT_BLACK);
+        tft.drawString("^", tft.width() - 6, MENU_TOP - 16, 2);
+
+        bool moreBelow = menuScrollOffset + MENU_VISIBLE_ROWS < MENU_COUNT;
+        tft.setTextColor(moreBelow ? TOKEN_BLUE : TFT_BLACK, TFT_BLACK);
+        tft.drawString("v", tft.width() - 6, MENU_TOP + MENU_VISIBLE_ROWS * MENU_ROW_H + 2, 2);
     }
 
     void drawMenu(TFT_eSPI &tft) {
+        clampMenuScrollOffset();
         drawHeader(tft, "Settings");
-        for (int i = 0; i < MENU_COUNT; i++) drawMenuRow(tft, i);
+        drawMenuRows(tft);
+        drawMenuScrollHints(tft);
         AccountList::drawIdleFooter(tft);
     }
 
@@ -217,12 +284,95 @@ namespace {
 
         tft.setTextColor(color2, TFT_BLACK);
         tft.drawString(line2, tft.width() / 2, tft.height() / 2 + 14, 1);
+
+        // Which offset actually produced that time -- lets a wrong reading
+        // be caught here instead of only showing up later as a wrong TOTP
+        // code, and tells you which fix applies (nothing to do, vs. go fix
+        // Settings > Time Zone).
+        if (BleTimeSync::state() == BleTimeSync::State::Success) {
+            const char *zoneLabel = BleTimeSync::lastOffsetSource() == BleTimeSync::OffsetSource::Detected
+                                         ? "zone: from phone"
+                                         : "zone: Settings > Time Zone";
+            tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+            tft.drawString(zoneLabel, tft.width() / 2, tft.height() / 2 + 34, 1);
+        }
     }
 
     void drawBluetoothSync(TFT_eSPI &tft) {
         drawHeader(tft, "Bluetooth Sync");
         drawBleSyncBody(tft);
         lastDrawnBleState = BleTimeSync::state();
+        AccountList::drawIdleFooter(tft);
+    }
+
+    // Just the status text -- the part that changes as AccountLink's
+    // state machine advances. Same band as drawBleSyncBody, see there for
+    // why it's cleared rather than redrawn wholesale.
+    void drawAddAccountBody(TFT_eSPI &tft) {
+        const char *line1 = "";
+        String line2;
+        uint16_t color2 = TFT_DARKGREY;
+
+        switch (AccountLink::state()) {
+            case AccountLink::State::Idle:
+            case AccountLink::State::Listening:
+                line1 = "Waiting on serial...";
+                line2 = "send ADD|name|issuer|secret";
+                break;
+            case AccountLink::State::Success:
+                line1 = "Added!";
+                line2 = AccountLink::lastMessage();
+                color2 = TOKEN_BLUE;
+                break;
+            case AccountLink::State::Failed:
+                line1 = "Failed";
+                line2 = AccountLink::lastMessage();
+                color2 = TFT_RED;
+                break;
+        }
+
+        tft.fillRect(0, 27, tft.width(), tft.height() - 27 - 14, TFT_BLACK);
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(line1, tft.width() / 2, tft.height() / 2 - 20, 2);
+
+        tft.setTextColor(color2, TFT_BLACK);
+        tft.drawString(line2, tft.width() / 2, tft.height() / 2 + 2, 1);
+
+        if (AccountLink::state() != AccountLink::State::Listening) {
+            tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+            tft.drawString("press to add another", tft.width() / 2, tft.height() / 2 + 22, 1);
+        }
+    }
+
+    void drawAddAccount(TFT_eSPI &tft) {
+        drawHeader(tft, "Add Account");
+        drawAddAccountBody(tft);
+        lastDrawnLinkState = AccountLink::state();
+        AccountList::drawIdleFooter(tft);
+    }
+
+    // Just the ON/OFF readout -- the part that changes on press().
+    void drawTypingValue(TFT_eSPI &tft) {
+        tft.setTextDatum(TR_DATUM);
+        tft.setTextColor(enterAfterCode ? TOKEN_BLUE_LIGHT : TFT_DARKGREY, TFT_BLACK);
+        tft.drawString(enterAfterCode ? "ON" : "OFF", tft.width() - 16, 38, 2);
+    }
+
+    void drawTyping(TFT_eSPI &tft) {
+        drawHeader(tft, "Typing");
+
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Press Enter after code", 16, 38, 2);
+
+        drawTypingValue(tft);
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.drawString("press to toggle", tft.width() / 2, tft.height() - 32, 1);
+
         AccountList::drawIdleFooter(tft);
     }
 
@@ -314,13 +464,34 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
+    void drawWipeConfirm(TFT_eSPI &tft) {
+        drawHeader(tft, "Wipe Device");
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("This deletes all accounts", tft.width() / 2, tft.height() / 2 - 24, 2);
+        tft.drawString("and resets your PIN.", tft.width() / 2, tft.height() / 2 - 4, 2);
+
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("This cannot be undone.", tft.width() / 2, tft.height() / 2 + 20, 1);
+
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.drawString("press: wipe   back: cancel", tft.width() / 2, tft.height() / 2 + 36, 1);
+
+        AccountList::drawIdleFooter(tft);
+    }
+
     void drawCurrentPage(TFT_eSPI &tft) {
         switch (page) {
             case Page::Menu: drawMenu(tft); break;
             case Page::SyncTime: drawSyncTime(tft); break;
             case Page::BluetoothSync: drawBluetoothSync(tft); break;
+            case Page::AddAccount: drawAddAccount(tft); break;
+            case Page::ChangePin: break; // PinEntry owns its own drawing
+            case Page::Typing: drawTyping(tft); break;
             case Page::System: drawSystem(tft); break;
             case Page::TimeZone: drawTimeZone(tft); break;
+            case Page::WipeConfirm: drawWipeConfirm(tft); break;
             case Page::About: drawAbout(tft); break;
         }
     }
@@ -329,6 +500,7 @@ namespace {
 void Settings::enter(TFT_eSPI &tft) {
     page = Page::Menu;
     menuSelected = 0;
+    menuScrollOffset = 0;
     drawCurrentPage(tft);
 }
 
@@ -341,8 +513,17 @@ void Settings::scroll(TFT_eSPI &tft, int delta) {
         case Page::Menu: {
             int oldSelected = menuSelected;
             menuSelected = ((menuSelected + delta) % MENU_COUNT + MENU_COUNT) % MENU_COUNT;
-            drawMenuRow(tft, oldSelected);
-            drawMenuRow(tft, menuSelected);
+
+            int oldScrollOffset = menuScrollOffset;
+            clampMenuScrollOffset();
+            if (menuScrollOffset != oldScrollOffset) {
+                drawMenuRows(tft);
+                drawMenuScrollHints(tft);
+                break;
+            }
+
+            redrawMenuRowAt(tft, oldSelected);
+            redrawMenuRowAt(tft, menuSelected);
             break;
         }
 
@@ -368,9 +549,16 @@ void Settings::scroll(TFT_eSPI &tft, int delta) {
             break;
         }
 
+        case Page::ChangePin:
+            PinEntry::scroll(tft, delta);
+            break;
+
         case Page::BluetoothSync:
+        case Page::AddAccount:
+        case Page::Typing:
+        case Page::WipeConfirm:
         case Page::About:
-            break; // read-only pages
+            break; // read-only pages / toggled by press() rather than scroll()
     }
 }
 
@@ -378,11 +566,21 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
     if (page == Page::Menu) {
         switch (menuSelected) {
             case 0: page = Page::SyncTime; break;
-            case 1: page = Page::System; break;
-            case 2: page = Page::TimeZone; break;
-            case 3: page = Page::About; break;
+            case 1: page = Page::AddAccount; break;
+            case 2: page = Page::ChangePin; break;
+            case 3: page = Page::Typing; break;
+            case 4: page = Page::System; break;
+            case 5: page = Page::TimeZone; break;
+            case 6: page = Page::WipeConfirm; break;
+            case 7: page = Page::About; break;
         }
-        drawCurrentPage(tft);
+        if (page == Page::AddAccount) AccountLink::begin();
+        if (page == Page::ChangePin) {
+            changePinVerified = false;
+            PinEntry::enterVerify(tft, "Current PIN");
+        } else {
+            drawCurrentPage(tft);
+        }
         return Action::None;
     }
 
@@ -398,6 +596,38 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
         drawCurrentPage(tft);
     }
 
+    if (page == Page::Typing) {
+        enterAfterCode = !enterAfterCode;
+        drawTypingValue(tft);
+    }
+
+    if (page == Page::AddAccount && AccountLink::state() != AccountLink::State::Listening) {
+        // Not listening means the last attempt already resolved
+        // (Success/Failed) -- start listening again for another account
+        // rather than making the user back out and back in each time.
+        AccountLink::begin();
+        drawCurrentPage(tft);
+    }
+
+    if (page == Page::ChangePin) {
+        PinEntry::Action action = PinEntry::press(tft);
+        if (!changePinVerified && action == PinEntry::Action::Unlocked) {
+            // The current PIN checked out -- move on to picking a new one.
+            changePinVerified = true;
+            PinEntry::enterSetNew(tft);
+        } else if (changePinVerified && action == PinEntry::Action::PinSet) {
+            AccountStore::reencrypt(PinEntry::sessionKey());
+            page = Page::Menu;
+            drawCurrentPage(tft);
+        }
+    }
+
+    if (page == Page::WipeConfirm) {
+        AccountStore::wipeAll();
+        PinStore::wipe();
+        ESP.restart();
+    }
+
     return Action::None;
 }
 
@@ -409,6 +639,14 @@ bool Settings::back(TFT_eSPI &tft) {
             BleTimeSync::stop();
             page = Page::SyncTime;
             break;
+        case Page::ChangePin:
+            // PinEntry::back() steps back a digit box on its own and
+            // redraws; only pop out of the whole flow once it reports
+            // nothing left to back into.
+            if (PinEntry::back(tft)) return true;
+            changePinVerified = false;
+            page = Page::Menu;
+            break;
         default:
             page = Page::Menu;
             break;
@@ -418,6 +656,15 @@ bool Settings::back(TFT_eSPI &tft) {
 }
 
 void Settings::poll(TFT_eSPI &tft) {
+    if (page == Page::AddAccount) {
+        AccountLink::poll();
+        if (AccountLink::state() != lastDrawnLinkState) {
+            drawAddAccountBody(tft);
+            lastDrawnLinkState = AccountLink::state();
+        }
+        return;
+    }
+
     if (page != Page::BluetoothSync) return;
 
     BleTimeSync::poll();
@@ -425,4 +672,8 @@ void Settings::poll(TFT_eSPI &tft) {
         drawBleSyncBody(tft);
         lastDrawnBleState = BleTimeSync::state();
     }
+}
+
+bool Settings::typeEnterAfterCode() {
+    return enterAfterCode;
 }

@@ -3,30 +3,44 @@
 #include <Adafruit_NeoPixel.h>
 #include <RotaryEncoder.h>
 
+#include "account_store.h"
 #include "backlight.h"
 #include "battery.h"
 #include "board_pins.h"
+#include "pin_store.h"
 #include "power.h"
+#include "time_sync.h"
+#include "totp.h"
+#include "usb_hid.h"
 #include "wifi_auto.h"
 #include "wifi_store.h"
 #include "ui/account_list.h"
 #include "ui/boot_screen.h"
+#include "ui/colors.h"
 #include "ui/keyboard.h"
+#include "ui/pin_entry.h"
 #include "ui/settings.h"
 #include "ui/sync_status.h"
 #include "ui/wifi_list.h"
 
 namespace {
-    enum class Screen { AccountList, Settings, WifiList, Keyboard, SyncStatus };
+    enum class Screen { PinEntry, AccountList, Settings, WifiList, Keyboard, SyncStatus };
 
     constexpr uint32_t ENCODER_KEY_DEBOUNCE_MS = 150;
     constexpr uint32_t HEADER_REFRESH_MS = 1000;
+    constexpr uint32_t TYPED_FOOTER_MS = 1200;
 
-    Screen currentScreen = Screen::AccountList;
+    Screen currentScreen = Screen::PinEntry;
     long encoderPos = 0;
     bool encoderKeyWasPressed = false;
     uint32_t lastEncoderKeyEventMs = 0;
     uint32_t lastHeaderRefreshMs = 0;
+
+    // Set while the "Typed ..." footer from a click-to-type is showing, so
+    // loop() knows to revert it back to the idle hint once TYPED_FOOTER_MS
+    // has passed.
+    bool footerFlashing = false;
+    uint32_t footerFlashUntilMs = 0;
 
     // The network picked in WifiList, carried through Keyboard (if a
     // password is needed) to SyncStatus.
@@ -46,6 +60,26 @@ namespace {
 
         encoderKeyWasPressed = pressed;
         return clicked;
+    }
+
+    // Types the currently selected account's code over USB HID and flashes
+    // a confirmation in the footer. No-op on the trailing Settings row or
+    // before the clock has synced -- there'd be nothing valid to type.
+    void typeSelectedCode(TFT_eSPI &tft) {
+        int index = AccountList::selectedAccountIndex();
+        if (index < 0 || !TimeSync::isSynced()) return;
+
+        const AccountStore::Account &account = AccountStore::at(index);
+        char code[10];
+        if (!Totp::generate(account.secret, account.digits, account.period, TimeSync::now(), code, sizeof(code))) {
+            return;
+        }
+
+        UsbHid::typeCode(code, Settings::typeEnterAfterCode());
+
+        AccountList::drawFooter(tft, String("Typed ") + code, TOKEN_BLUE);
+        footerFlashing = true;
+        footerFlashUntilMs = millis() + TYPED_FOOTER_MS;
     }
 }
 
@@ -82,14 +116,11 @@ void setup() {
     pixels.show();
 
     WifiStore::begin();
+    PinStore::begin();
+    UsbHid::begin();
 
     BootScreen::play(tft);
-    AccountList::draw(tft);
-
-    // Started after the list is on screen -- the whole sequence runs from
-    // loop(), so the UI is usable while it works in the background. The
-    // header clock switches from "--:--" to the real time when it lands.
-    WifiAuto::begin();
+    PinEntry::enterBoot(tft);
 
     Serial.println("Token is alive.");
 }
@@ -106,6 +137,7 @@ void loop() {
         encoderPos = newPos;
 
         switch (currentScreen) {
+            case Screen::PinEntry: PinEntry::scroll(tft, delta); break;
             case Screen::AccountList: AccountList::scroll(tft, delta); break;
             case Screen::Settings: Settings::scroll(tft, delta); break;
             case Screen::WifiList: WifiList::scroll(tft, delta); break;
@@ -116,10 +148,32 @@ void loop() {
 
     if (pollEncoderKeyClicked()) {
         switch (currentScreen) {
+            case Screen::PinEntry: {
+                PinEntry::Action action = PinEntry::press(tft);
+                if (action == PinEntry::Action::Unlocked || action == PinEntry::Action::PinSet) {
+                    AccountStore::begin(PinEntry::sessionKey());
+                    currentScreen = Screen::AccountList;
+                    AccountList::draw(tft);
+
+                    // Started once the list is on screen -- the whole
+                    // sequence runs from loop(), so the UI is usable while
+                    // it works in the background. The header clock
+                    // switches from "--:--" to the real time when it lands.
+                    WifiAuto::begin();
+                } else if (action == PinEntry::Action::WipeRequested) {
+                    AccountStore::wipeAll();
+                    PinStore::wipe();
+                    ESP.restart();
+                }
+                break;
+            }
+
             case Screen::AccountList:
                 if (AccountList::isSettingsSelected()) {
                     currentScreen = Screen::Settings;
                     Settings::enter(tft);
+                } else {
+                    typeSelectedCode(tft);
                 }
                 break;
 
@@ -161,6 +215,10 @@ void loop() {
     bool backClicked = Power::pollShutdownButton(sidePressed, tft, pixels);
     if (backClicked) {
         switch (currentScreen) {
+            case Screen::PinEntry:
+                PinEntry::back(tft);
+                break;
+
             case Screen::AccountList:
                 break; // already top level
 
@@ -202,7 +260,13 @@ void loop() {
     if (currentScreen == Screen::AccountList && now - lastHeaderRefreshMs >= HEADER_REFRESH_MS) {
         Battery::poll();
         AccountList::refreshHeaderWidgets(tft);
+        AccountList::refreshCodes(tft);
         lastHeaderRefreshMs = now;
+    }
+
+    if (footerFlashing && (currentScreen != Screen::AccountList || now >= footerFlashUntilMs)) {
+        if (currentScreen == Screen::AccountList) AccountList::drawIdleFooter(tft);
+        footerFlashing = false;
     }
 
     delay(2);

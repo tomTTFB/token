@@ -26,7 +26,9 @@ namespace Settings {
 
     // Handles an encoder button press. Enters the selected submenu item
     // from the top-level menu; on Sync Time, either opens the WiFi flow
-    // (see Action) or the Bluetooth placeholder. No-op elsewhere.
+    // (see Action) or starts a Bluetooth pairing attempt; on Add Account,
+    // (re)starts listening for the next account over serial. No-op
+    // elsewhere.
     Action press(TFT_eSPI &tft);
 
     // Steps back one level on a side-button click. Returns true if the
@@ -35,7 +37,12 @@ namespace Settings {
     bool back(TFT_eSPI &tft);
 
     // Must be called every loop() iteration while Settings is the active
-    // screen. No-op except on the Bluetooth Sync page, where it drives
-    // BleTimeSync's state machine and redraws the status text on change.
+    // screen. Drives BleTimeSync's state machine on the Bluetooth Sync
+    // page and AccountLink's on Add Account, redrawing the status text on
+    // change; no-op on every other page.
     void poll(TFT_eSPI &tft);
+
+    // Whether a click-to-type should send Enter after the code. Set from
+    // the Typing page; read by main.cpp's encoder-click handler.
+    bool typeEnterAfterCode();
 }

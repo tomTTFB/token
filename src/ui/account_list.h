@@ -14,10 +14,20 @@ namespace AccountList {
     // True when the trailing Settings row is the current selection.
     bool isSettingsSelected();
 
+    // Index into AccountStore of the current selection, or -1 when the
+    // trailing Settings row is selected instead.
+    int selectedAccountIndex();
+
     // Redraws just the time/battery widgets in the header, without
     // touching the rows below -- called periodically so the clock ticks
     // over and the battery reading updates without a full-list redraw.
     void refreshHeaderWidgets(TFT_eSPI &tft);
+
+    // Redraws just the TOTP code text and countdown bar of each visible
+    // account row, without touching name/issuer/highlight -- called
+    // periodically so codes roll over and the bar drains without a
+    // full-list redraw.
+    void refreshCodes(TFT_eSPI &tft);
 
     // Redraws just the bottom hint/countdown line, so the power-off hold
     // countdown can update every tick without a full-screen redraw.
