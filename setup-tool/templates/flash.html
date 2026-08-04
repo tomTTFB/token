@@ -40,8 +40,10 @@
 </div>
 
 <p class="text-secondary small mt-3">
-    Flashing erases and rewrites the bootloader, partition table, and application &mdash; account data lives in a
-    separate NVS partition that this doesn't touch, so existing accounts and the PIN survive a reflash.
+    Flashing rewrites the bootloader, partition table, and application. Account data lives in a separate NVS
+    partition, so a normal update leaves existing accounts and the PIN alone &mdash; when the browser asks, just
+    leave <strong>"Erase device"</strong> unchecked. Only check it if you want a full factory reset (e.g. before
+    giving the device away); that wipes every stored account and the PIN along with the firmware.
 </p>
 {% endblock %}
 

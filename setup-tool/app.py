@@ -86,7 +86,14 @@ def manifest():
     return jsonify({
         "name": "Token",
         "version": firmware_version(),
-        "new_install_prompt_erase": False,
+        # Token doesn't implement Improv Serial, so ESP Web Tools can never
+        # detect a matching existing install and always treats a flash as a
+        # "new install". Left false, that means every flash silently erases
+        # the whole chip -- NVS partition (accounts, PIN) included -- with
+        # no prompt at all. True surfaces an "Erase device" checkbox instead,
+        # unchecked by default, so a routine firmware update keeps existing
+        # data and a full wipe is still one click away for anyone who wants it.
+        "new_install_prompt_erase": True,
         "builds": [
             {
                 "chipFamily": "ESP32-S3",
