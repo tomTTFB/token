@@ -31,6 +31,8 @@ change &mdash; there's no build step in this tool itself.
 ## Pages
 
 - **Home** &mdash; lists detected serial ports and flags ones that look like Token.
+  Ports that never reported a USB product string (on Linux, the 32 legacy
+  `/dev/ttyS*` UARTs) are collapsed behind a "Show all" toggle.
 - **Flash** &mdash; flashes bootloader/partitions/firmware over USB straight from
   the browser (Web Serial), no `pio run -t upload` or driver install needed.
 - **Add Account** &mdash; scan a QR code or enter a secret manually, then send it

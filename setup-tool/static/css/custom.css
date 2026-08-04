@@ -28,6 +28,12 @@ code, .font-monospace {
     letter-spacing: 0.02em;
 }
 
+/* !important because the rows are Bootstrap .d-flex, whose own utility rule
+   is itself !important and would otherwise win. */
+#port-list.hide-plain .port-plain {
+    display: none !important;
+}
+
 esp-web-install-button {
     --esp-tools-button-color: #ffffff;
     --esp-tools-button-background-color: var(--token-blue);

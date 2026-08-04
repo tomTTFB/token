@@ -10,9 +10,9 @@
                 <h2 class="h5 card-title">Serial ports</h2>
                 <p class="text-secondary small">Token enumerates as a native USB device. Ports marked
                     <span class="badge text-bg-primary">likely Token</span> match Espressif's USB vendor ID.</p>
-                <ul class="list-group list-group-flush" id="port-list">
+                <ul class="list-group list-group-flush hide-plain" id="port-list">
                     {% for port in ports %}
-                    <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
+                    <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center{% if not port.described and not port.likely_token %} port-plain{% endif %}">
                         <span class="font-monospace">{{ port.device }}</span>
                         {% if port.likely_token %}
                         <span class="badge text-bg-primary">likely Token</span>
@@ -24,7 +24,19 @@
                     <li class="list-group-item bg-transparent text-secondary">No serial ports detected. Plug in Token over USB-C.</li>
                     {% endfor %}
                 </ul>
-                <button class="btn btn-outline-secondary btn-sm mt-3" onclick="refreshPorts()">Refresh</button>
+                <p class="text-secondary small mt-3 mb-0 d-none" id="all-plain-note">
+                    Nothing here identified itself. Token won't show up until it's plugged in and running
+                    a native-USB build.
+                </p>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="refreshPorts()">Refresh</button>
+                    <div class="form-check form-switch mb-0 d-none" id="show-plain-toggle">
+                        <input class="form-check-input" type="checkbox" id="show-plain" onchange="applyPortFilter()">
+                        <label class="form-check-label text-secondary small" for="show-plain">
+                            Show all (<span id="plain-count">0</span> hidden)
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -57,6 +69,22 @@
 
 {% block scripts %}
 <script>
+// Ports that never reported a USB product string -- on Linux that's the 32
+// legacy /dev/ttyS* UARTs, which bury the one port anyone came here for.
+// They stay hidden behind the toggle rather than being dropped, since a
+// Token on an external USB-UART adapter would land in that group too.
+function applyPortFilter() {
+    const list = document.getElementById('port-list');
+    const showPlain = document.getElementById('show-plain').checked;
+    list.classList.toggle('hide-plain', !showPlain);
+
+    const plain = list.querySelectorAll('.port-plain').length;
+    document.getElementById('plain-count').textContent = plain;
+    document.getElementById('show-plain-toggle').classList.toggle('d-none', plain === 0);
+    document.getElementById('all-plain-note').classList.toggle(
+        'd-none', showPlain || plain === 0 || plain < list.children.length);
+}
+
 async function refreshPorts() {
     const res = await fetch('/api/ports');
     const ports = await res.json();
@@ -64,16 +92,23 @@ async function refreshPorts() {
     list.innerHTML = '';
     if (ports.length === 0) {
         list.innerHTML = '<li class="list-group-item bg-transparent text-secondary">No serial ports detected. Plug in Token over USB-C.</li>';
+        applyPortFilter();
         return;
     }
     for (const port of ports) {
         const li = document.createElement('li');
         li.className = 'list-group-item bg-transparent d-flex justify-content-between align-items-center';
+        if (!port.described && !port.likely_token) {
+            li.classList.add('port-plain');
+        }
         li.innerHTML = port.likely_token
             ? `<span class="font-monospace">${port.device}</span><span class="badge text-bg-primary">likely Token</span>`
             : `<span class="font-monospace">${port.device}</span><span class="text-secondary small">${port.description}</span>`;
         list.appendChild(li);
     }
+    applyPortFilter();
 }
+
+applyPortFilter();
 </script>
 {% endblock %}

@@ -32,6 +32,7 @@ ESPRESSIF_VID = 0x303A
 class PortInfo:
     device: str
     description: str
+    described: bool
     likely_token: bool
 
 
@@ -44,9 +45,15 @@ class AddAccountResult:
 def list_ports() -> list[PortInfo]:
     ports = []
     for p in serial.tools.list_ports.comports():
+        # pyserial reports the literal string "n/a" (not None) when a
+        # platform can't determine a port's description -- common on Linux
+        # for ports without a USB product string. Treat it the same as no
+        # description at all rather than showing the useless literal text.
+        described = bool(p.description) and p.description != "n/a"
         ports.append(PortInfo(
             device=p.device,
-            description=p.description or p.device,
+            description=p.description if described else p.device,
+            described=described,
             likely_token=(p.vid == ESPRESSIF_VID),
         ))
     # Likely matches first, then alphabetical within each group.
