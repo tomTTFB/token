@@ -88,17 +88,15 @@ delete, or wipe).
 
 ## Demo
 
-Two things running on the home LAN sandbox, for poking at without a device
-in hand:
+Two things running for poking at without a device in hand:
 
 - **TOTP demo** — [http://192.168.0.125:8092](http://192.168.0.125:8092),
   the code-generation algorithm running in a browser so you can see it work
-  without flashing hardware.
-- **Token setup tool** — [http://192.168.0.125:5002](http://192.168.0.125:5002),
+  without flashing hardware. LAN-only — it won't resolve off the home
+  network.
+- **Token setup tool** — [https://token.tomttfb.com](https://token.tomttfb.com),
   the same web setup app from above, deployed so it's reachable without
   running it locally.
-
-Both are LAN-only — they won't resolve off the home network.
 
 ## Notes
 
