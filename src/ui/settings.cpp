@@ -15,7 +15,7 @@
 
 namespace {
     enum class Page { Menu, SyncTime, BluetoothSync, AddAccount, ChangePin, Typing, System, TimeZone, WipeConfirm,
-                       About };
+                       WipeConfirm2, WipeConfirmSpin, WipeConfirmPin, About };
 
     const char *MENU_ITEMS[] = {"Sync Time", "Add Account", "Change PIN", "Typing", "System", "Time Zone",
                                  "Wipe Device", "About"};
@@ -27,6 +27,13 @@ namespace {
     constexpr int TIMEZONE_STEP_MINUTES = 30;
     constexpr int TIMEZONE_MIN_MINUTES = -12 * 60;
     constexpr int TIMEZONE_MAX_MINUTES = 14 * 60;
+
+    // One tick is one detent, per RotaryEncoder's TWO03 latch mode in
+    // main.cpp. This board's encoder isn't documented anywhere with an
+    // exact detents-per-revolution figure, so this errs high -- the goal
+    // of the wipe-confirmation spin is a deliberate, unmistakable gesture,
+    // not a precisely measured one.
+    constexpr int WIPE_SPIN_TICKS = 20;
 
     constexpr int SYNC_BTN_TOP = 30;
     constexpr int SYNC_BTN_H = 122;
@@ -63,6 +70,10 @@ namespace {
     // sub-flows (enterVerify then enterSetNew) that share the same Action
     // values.
     bool changePinVerified = false;
+
+    // Accumulated |ticks| on the WipeConfirmSpin stage since it was last
+    // (re-)entered. Reset whenever that stage is entered fresh.
+    int wipeSpinProgress = 0;
 
     void drawHeader(TFT_eSPI &tft, const char *title) {
         tft.fillScreen(TFT_BLACK);
@@ -471,6 +482,9 @@ namespace {
         AccountList::drawIdleFooter(tft);
     }
 
+    // Stage 1 of 3: the plain-language warning. Just the first ask -- see
+    // drawWipeConfirm2 for the second, and WipeConfirmSpin/WipeConfirmPin
+    // for the physical and PIN gates after that.
     void drawWipeConfirm(TFT_eSPI &tft) {
         drawHeader(tft, "Wipe Device");
 
@@ -483,7 +497,56 @@ namespace {
         tft.drawString("This cannot be undone.", tft.width() / 2, tft.height() / 2 + 20, 1);
 
         tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-        tft.drawString("press: wipe   back: cancel", tft.width() / 2, tft.height() / 2 + 36, 1);
+        tft.drawString("press: continue   back: cancel", tft.width() / 2, tft.height() / 2 + 36, 1);
+
+        AccountList::drawIdleFooter(tft);
+    }
+
+    // Stage 2 of 3: a second, distinct ask -- spells out the two gates
+    // still ahead so the spin stage doesn't come as a surprise.
+    void drawWipeConfirm2(TFT_eSPI &tft) {
+        drawHeader(tft, "Wipe Device");
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("Are you sure?", tft.width() / 2, tft.height() / 2 - 28, 2);
+
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("You'll spin the dial all the", tft.width() / 2, tft.height() / 2 - 2, 1);
+        tft.drawString("way around, then enter your PIN.", tft.width() / 2, tft.height() / 2 + 14, 1);
+
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.drawString("press: continue   back: cancel", tft.width() / 2, tft.height() / 2 + 38, 1);
+
+        AccountList::drawIdleFooter(tft);
+    }
+
+    // Just the progress track -- factored out so scroll() can update it on
+    // every tick without repainting the stage's static text underneath it.
+    void drawWipeSpinProgress(TFT_eSPI &tft) {
+        int barX = 40, barY = tft.height() / 2 + 24, barW = tft.width() - 80, barH = 8;
+
+        tft.fillRect(barX, barY, barW, barH, TFT_DARKGREY);
+        int fillW = barW * wipeSpinProgress / WIPE_SPIN_TICKS;
+        if (fillW > 0) tft.fillRect(barX, barY, fillW, barH, TOKEN_BLUE);
+    }
+
+    // Stage 3 of 3a: a full encoder revolution, the one gate here that
+    // can't be triggered by a stray button press. WipeConfirmPin (the
+    // PIN re-entry) is stage 3b, entered once scroll() sees this hit
+    // WIPE_SPIN_TICKS.
+    void drawWipeConfirmSpin(TFT_eSPI &tft) {
+        drawHeader(tft, "Wipe Device");
+
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Spin the dial all the way", tft.width() / 2, tft.height() / 2 - 24, 2);
+        tft.drawString("around to confirm.", tft.width() / 2, tft.height() / 2 - 4, 2);
+
+        drawWipeSpinProgress(tft);
+
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.drawString("back: cancel", tft.width() / 2, tft.height() / 2 + 44, 1);
 
         AccountList::drawIdleFooter(tft);
     }
@@ -499,6 +562,9 @@ namespace {
             case Page::System: drawSystem(tft); break;
             case Page::TimeZone: drawTimeZone(tft); break;
             case Page::WipeConfirm: drawWipeConfirm(tft); break;
+            case Page::WipeConfirm2: drawWipeConfirm2(tft); break;
+            case Page::WipeConfirmSpin: drawWipeConfirmSpin(tft); break;
+            case Page::WipeConfirmPin: break; // PinEntry owns its own drawing
             case Page::About: drawAbout(tft); break;
         }
     }
@@ -560,10 +626,28 @@ void Settings::scroll(TFT_eSPI &tft, int delta) {
             PinEntry::scroll(tft, delta);
             break;
 
+        // Any rotation counts toward the confirmation, not just one
+        // direction -- someone spinning it "the wrong way" first is still
+        // making a deliberate, hard-to-mistake gesture.
+        case Page::WipeConfirmSpin:
+            wipeSpinProgress = min(wipeSpinProgress + abs(delta), WIPE_SPIN_TICKS);
+            if (wipeSpinProgress >= WIPE_SPIN_TICKS) {
+                page = Page::WipeConfirmPin;
+                PinEntry::enterVerify(tft, "Confirm PIN to wipe");
+            } else {
+                drawWipeSpinProgress(tft);
+            }
+            break;
+
+        case Page::WipeConfirmPin:
+            PinEntry::scroll(tft, delta);
+            break;
+
         case Page::BluetoothSync:
         case Page::AddAccount:
         case Page::Typing:
         case Page::WipeConfirm:
+        case Page::WipeConfirm2:
         case Page::About:
             break; // read-only pages / toggled by press() rather than scroll()
     }
@@ -629,10 +713,32 @@ Settings::Action Settings::press(TFT_eSPI &tft) {
         }
     }
 
+    // Each stage below returns immediately after moving to the next one --
+    // without that, reassigning `page` here would fall straight into the
+    // following `if` in this same call and skip a stage's screen entirely.
+
     if (page == Page::WipeConfirm) {
-        AccountStore::wipeAll();
-        PinStore::wipe();
-        ESP.restart();
+        page = Page::WipeConfirm2;
+        drawCurrentPage(tft);
+        return Action::None;
+    }
+
+    if (page == Page::WipeConfirm2) {
+        page = Page::WipeConfirmSpin;
+        wipeSpinProgress = 0;
+        drawCurrentPage(tft);
+        return Action::None;
+    }
+
+    // WipeConfirmSpin isn't listed here -- it only advances via scroll()'s
+    // full-revolution check, deliberately not a button press.
+
+    if (page == Page::WipeConfirmPin) {
+        if (PinEntry::press(tft) == PinEntry::Action::Unlocked) {
+            AccountStore::wipeAll();
+            PinStore::wipe();
+            ESP.restart();
+        }
     }
 
     return Action::None;
@@ -652,6 +758,13 @@ bool Settings::back(TFT_eSPI &tft) {
             // nothing left to back into.
             if (PinEntry::back(tft)) return true;
             changePinVerified = false;
+            page = Page::Menu;
+            break;
+        case Page::WipeConfirmPin:
+            // Same idea as ChangePin above: step back a digit first, only
+            // abandon the wipe entirely once there's nothing left to back
+            // into.
+            if (PinEntry::back(tft)) return true;
             page = Page::Menu;
             break;
         default:
