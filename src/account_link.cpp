@@ -9,6 +9,7 @@ namespace {
     AccountLink::State currentState = AccountLink::State::Idle;
     String lineBuf;
     String message;
+    String issuerMsg;
 
     // Splits "ADD|name|issuer|secret" on '|' into exactly 4 fields.
     // Returns false if the field count doesn't match (a caller-side typo,
@@ -66,6 +67,7 @@ namespace {
 
         currentState = AccountLink::State::Success;
         message = name;
+        issuerMsg = issuer;
         Serial.println("OK");
     }
 }
@@ -74,6 +76,7 @@ void AccountLink::begin() {
     while (Serial.available()) Serial.read();
     lineBuf = "";
     message = "";
+    issuerMsg = "";
     currentState = State::Listening;
     Serial.println("Token: waiting for ADD|name|issuer|secret");
 }
@@ -99,4 +102,8 @@ AccountLink::State AccountLink::state() {
 
 const String &AccountLink::lastMessage() {
     return message;
+}
+
+const String &AccountLink::lastIssuer() {
+    return issuerMsg;
 }

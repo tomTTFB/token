@@ -30,4 +30,9 @@ namespace AccountLink {
     // Human-readable result of the last completed attempt: the account
     // name on Success, or the failure reason on Failed. Empty otherwise.
     const String &lastMessage();
+
+    // The added account's issuer on Success, mirroring the same field the
+    // web setup tool previews before it sends. May be empty (the field is
+    // optional). Meaningless outside Success.
+    const String &lastIssuer();
 }

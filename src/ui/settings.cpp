@@ -308,41 +308,48 @@ namespace {
     // Just the status text -- the part that changes as AccountLink's
     // state machine advances. Same band as drawBleSyncBody, see there for
     // why it's cleared rather than redrawn wholesale.
+    //
+    // On Success this previews name + issuer, the same two fields the web
+    // setup tool's Review card shows before it ever sends the account --
+    // so confirmation here isn't just "an account arrived", it's "this is
+    // the account that arrived".
     void drawAddAccountBody(TFT_eSPI &tft) {
-        const char *line1 = "";
-        String line2;
-        uint16_t color2 = TFT_DARKGREY;
+        int midY = tft.height() / 2;
+        tft.fillRect(0, 27, tft.width(), tft.height() - 27 - 14, TFT_BLACK);
+        tft.setTextDatum(MC_DATUM);
 
         switch (AccountLink::state()) {
             case AccountLink::State::Idle:
             case AccountLink::State::Listening:
-                line1 = "Waiting on serial...";
-                line2 = "send ADD|name|issuer|secret";
+                tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                tft.drawString("Waiting for account...", tft.width() / 2, midY - 10, 2);
+                tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+                tft.drawString("from the Token Setup web app", tft.width() / 2, midY + 14, 1);
                 break;
-            case AccountLink::State::Success:
-                line1 = "Added!";
-                line2 = AccountLink::lastMessage();
-                color2 = TOKEN_BLUE;
+
+            case AccountLink::State::Success: {
+                tft.setTextColor(TOKEN_BLUE, TFT_BLACK);
+                tft.drawString("Added!", tft.width() / 2, midY - 28, 2);
+
+                tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                tft.drawString(AccountLink::lastMessage(), tft.width() / 2, midY - 4, 1);
+
+                const String &issuer = AccountLink::lastIssuer();
+                tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+                tft.drawString(issuer.isEmpty() ? "(no issuer)" : issuer, tft.width() / 2, midY + 12, 1);
+
+                tft.drawString("press to add another", tft.width() / 2, midY + 32, 1);
                 break;
+            }
+
             case AccountLink::State::Failed:
-                line1 = "Failed";
-                line2 = AccountLink::lastMessage();
-                color2 = TFT_RED;
+                tft.setTextColor(TFT_WHITE, TFT_BLACK);
+                tft.drawString("Failed", tft.width() / 2, midY - 20, 2);
+                tft.setTextColor(TFT_RED, TFT_BLACK);
+                tft.drawString(AccountLink::lastMessage(), tft.width() / 2, midY + 2, 1);
+                tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+                tft.drawString("press to add another", tft.width() / 2, midY + 22, 1);
                 break;
-        }
-
-        tft.fillRect(0, 27, tft.width(), tft.height() - 27 - 14, TFT_BLACK);
-
-        tft.setTextDatum(MC_DATUM);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString(line1, tft.width() / 2, tft.height() / 2 - 20, 2);
-
-        tft.setTextColor(color2, TFT_BLACK);
-        tft.drawString(line2, tft.width() / 2, tft.height() / 2 + 2, 1);
-
-        if (AccountLink::state() != AccountLink::State::Listening) {
-            tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-            tft.drawString("press to add another", tft.width() / 2, tft.height() / 2 + 22, 1);
         }
     }
 
